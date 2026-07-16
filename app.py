@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import datetime
+import urllib.parse  # هذه المكتبة قمنا بإضافتها لتصحيح تشفير الحروف العربية في الروابط
 
 # إعدادات الصفحة وتصميمها بشكل مريح للعين
 st.set_page_config(page_title="الصندوق الشخصي للمدخول والمصروف", page_icon="💰", layout="centered")
@@ -28,8 +29,11 @@ AIRTABLE_API_KEY = st.secrets["airtable"]["api_key"]
 AIRTABLE_BASE_ID = st.secrets["airtable"]["base_id"]
 AIRTABLE_TABLE_NAME = st.secrets["airtable"]["table_name"]
 
-# رابط جلب وإرسال البيانات من Airtable API
-AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
+# قمنا بتشفير اسم الجدول هنا آلياً لتجنب مشكلة الـ UnicodeEncodeError إذا كان الاسم يحتوي على حروف عربية
+ENCODED_TABLE_NAME = urllib.parse.quote(AIRTABLE_TABLE_NAME)
+
+# رابط جلب وإرسال البيانات من Airtable API بعد التعديل الآمن
+AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{ENCODED_TABLE_NAME}"
 HEADERS = {
     "Authorization": f"Bearer {AIRTABLE_API_KEY}",
     "Content-Type": "application/json"
@@ -37,23 +41,27 @@ HEADERS = {
 
 # دالة لجلب البيانات من Airtable وعرضها
 def get_data():
-    response = requests.get(AIRTABLE_URL, headers=HEADERS)
-    if response.status_code == 200:
-        records = response.json().get("records", [])
-        data = []
-        for r in records:
-            fields = r.get("fields", {})
-            data.append({
-                "التاريخ": fields.get("التاريخ", ""),
-                "البيان": fields.get("البيان", ""),
-                "النوع": fields.get("النوع", ""),
-                "الفئة": fields.get("الفئة", ""),
-                "المبلغ": fields.get("المبلغ", 0.0),
-                "ملاحظات": fields.get("ملاحظات", "")
-            })
-        return pd.DataFrame(data)
-    else:
-        st.error("فشل الاتصال بقاعدة بيانات Airtable. تأكد من صحة الرموز السرية.")
+    try:
+        response = requests.get(AIRTABLE_URL, headers=HEADERS)
+        if response.status_code == 200:
+            records = response.json().get("records", [])
+            data = []
+            for r in records:
+                fields = r.get("fields", {})
+                data.append({
+                    "التاريخ": fields.get("التاريخ", ""),
+                    "البيان": fields.get("البيان", ""),
+                    "النوع": fields.get("النوع", ""),
+                    "الفئة": fields.get("الفئة", ""),
+                    "المبلغ": fields.get("المبلغ", 0.0),
+                    "ملاحظات": fields.get("ملاحظات", "")
+                })
+            return pd.DataFrame(data)
+        else:
+            st.error(f"فشل الاتصال بـ Airtable. كود الخطأ: {response.status_code}. يرجى مراجعة إعدادات Secrets.")
+            return pd.DataFrame()
+    except Exception as e:
+        st.error(f"حدث خطأ غير متوقع: {str(e)}")
         return pd.DataFrame()
 
 # دالة لإضافة عملية جديدة إلى Airtable
@@ -72,8 +80,11 @@ def add_record(date, desc, record_type, category, amount, notes):
             }
         ]
     }
-    response = requests.post(AIRTABLE_URL, headers=HEADERS, json=payload)
-    return response.status_code == 200
+    try:
+        response = requests.post(AIRTABLE_URL, headers=HEADERS, json=payload)
+        return response.status_code == 200
+    except Exception:
+        return False
 
 # عنوان البرنامج الرئيسي
 st.title("💰 برنامج الصندوق الشخصي")
@@ -85,7 +96,6 @@ df = get_data()
 
 # 1. قسم الإحصائيات وعرض الرصيد الحالي
 if not df.empty:
-    # نقوم بتحويل التاريخ لنوع تاريخ الفرز وترتيب العمليات من الأحدث للأقدم
     df['التاريخ'] = pd.to_datetime(df['التاريخ']).dt.date
     df = df.sort_values(by="التاريخ", ascending=False)
     
@@ -94,7 +104,7 @@ if not df.empty:
     total_expense = df[df["النوع"] == "المصروف"]["المبلغ"].sum()
     current_balance = total_income - total_expense
     
-    # عرض الإحصائيات ببطاقات ملونة جميلة
+    # عرض الإحصائيات ببطاقات ملونة
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric(label="💵 إجمالي المدخول", value=f"{total_income:,.2f}")
@@ -132,10 +142,9 @@ if submit_button:
             success = add_record(date_val, desc_val, type_val, category_val, amount_val, notes_val)
             if success:
                 st.success("تم تسجيل وحفظ العملية بنجاح!")
-                # إعادة تحميل الصفحة لتحديث البيانات المعروضة في ثانية واحدة
                 st.rerun()
             else:
-                st.error("حدث خطأ أثناء محاولة حفظ البيانات، يرجى مراجعة إعدادات الربط.")
+                st.error("حدث خطأ أثناء محاولة حفظ البيانات، يرجى مراجعة إعدادات الربط والـ Secrets.")
 
 st.markdown("---")
 
