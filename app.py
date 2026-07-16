@@ -32,7 +32,8 @@ def fetch_data():
                 })
             return pd.DataFrame(data)
         return pd.DataFrame()
-    except: return pd.DataFrame()
+    except: 
+        return pd.DataFrame()
 
 # --- واجهة التطبيق ---
 st.title("💰 الصندوق الشخصي")
@@ -47,7 +48,7 @@ if not df.empty:
 else:
     income, expense, balance = 0, 0, 0
 
-# عرض الأرقام في الأعلى (ستايل المسجد)
+# عرض الأرقام في الأعلى
 col1, col2, col3 = st.columns(3)
 col1.metric("إجمالي المدخول", f"{income:,.2f}")
 col2.metric("إجمالي المصروف", f"{expense:,.2f}")
@@ -65,17 +66,37 @@ with tab1:
         trans_type = c2.selectbox("النوع", ["المصروف", "المدخول"])
         date = st.date_input("التاريخ", datetime.today())
         desc = st.text_input("البيان")
-        if st.form_submit_button("إضافة"):
-            payload = {"records": [{"fields": {"Name": desc, "البيان": desc, "النوع": trans_type, "المبلغ": float(amount), "التاريخ": date.strftime("%Y-%m-%d")}}]}
-            requests.post(url, headers=headers, json=payload)
-            st.rerun()
+        
+        # زر الإرسال الخاص بالـ Form
+        submitted = st.form_submit_button("إضافة")
+        
+        if submitted:
+            # تجهيز البيانات فور الضغط وقبل تفريغ الحقول تلقائياً
+            payload = {
+                "records": [{
+                    "fields": {
+                        "Name": desc,
+                        "البيان": desc,
+                        "النوع": trans_type,
+                        "المبلغ": float(amount),
+                        "التاريخ": date.strftime("%Y-%m-%d")
+                    }
+                }]
+            }
+            # إرسال البيانات إلى Airtable
+            response = requests.post(url, headers=headers, json=payload)
+            
+            # إعادة تحديث الصفحة بمجرد نجاح العملية
+            if response.status_code == 200:
+                st.rerun()
 
 with tab2:
-    if st.button("🔄 تحديث البيانات"): st.rerun()
+    if st.button("🔄 تحديث البيانات"): 
+        st.rerun()
     if st.button("🚨 تصفير الصندوق بالكامل", type="primary"):
-        # كود التصفير (مبسط)
         if not df.empty:
-            for r_id in df["ID"]: requests.delete(f"{url}/{r_id}", headers=headers)
+            for r_id in df["ID"]: 
+                requests.delete(f"{url}/{r_id}", headers=headers)
             st.rerun()
 
 st.markdown("---")
