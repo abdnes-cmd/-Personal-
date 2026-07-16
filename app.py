@@ -2,12 +2,12 @@ import streamlit as st
 import pandas as pd
 import requests
 import datetime
-import urllib.parse  # هذه المكتبة قمنا بإضافتها لتصحيح تشفير الحروف العربية في الروابط
+import urllib.parse
 
-# إعدادات الصفحة وتصميمها بشكل مريح للعين
+# إعدادات الصفحة وتصميمها
 st.set_page_config(page_title="الصندوق الشخصي للمدخول والمصروف", page_icon="💰", layout="centered")
 
-# تعديل اتجاه الصفحة ليدعم اللغة العربية بشكل كامل
+# تعديل اتجاه الصفحة ليدعم اللغة العربية
 st.markdown("""
     <style>
     .reportview-container {
@@ -24,25 +24,30 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# الحصول على الرموز السرية من إعدادات Streamlit Secrets لربط Airtable بأمان
+# جلب الرموز السرية من الإعدادات
 AIRTABLE_API_KEY = st.secrets["airtable"]["api_key"]
 AIRTABLE_BASE_ID = st.secrets["airtable"]["base_id"]
 AIRTABLE_TABLE_NAME = st.secrets["airtable"]["table_name"]
 
-# قمنا بتشفير اسم الجدول هنا آلياً لتجنب مشكلة الـ UnicodeEncodeError إذا كان الاسم يحتوي على حروف عربية
+# تشفير اسم الجدول آلياً لتفادي مشكلة الـ latin-1 codec نهائياً
 ENCODED_TABLE_NAME = urllib.parse.quote(AIRTABLE_TABLE_NAME)
 
-# رابط جلب وإرسال البيانات من Airtable API بعد التعديل الآمن
+# بناء الرابط بشكل آمن ليدعم كافة الحروف والرموز
 AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{ENCODED_TABLE_NAME}"
+
+# إعداد الهيدر مع تحديد تشفير utf-8 الصريح لمنع أي خطأ ترميز
 HEADERS = {
     "Authorization": f"Bearer {AIRTABLE_API_KEY}",
-    "Content-Type": "application/json"
+    "Content-Type": "application/json; charset=utf-8"
 }
 
-# دالة لجلب البيانات من Airtable وعرضها
+# دالة جلب البيانات مع معالجة الأخطاء والترميز العربي
 def get_data():
     try:
+        # إرسال الطلب مع تحديد التشفير بشكل قسري لمنع أي تعارض
         response = requests.get(AIRTABLE_URL, headers=HEADERS)
+        response.encoding = 'utf-8' 
+        
         if response.status_code == 200:
             records = response.json().get("records", [])
             data = []
@@ -58,13 +63,13 @@ def get_data():
                 })
             return pd.DataFrame(data)
         else:
-            st.error(f"فشل الاتصال بـ Airtable. كود الخطأ: {response.status_code}. يرجى مراجعة إعدادات Secrets.")
+            st.error(f"تنبيه: فشل الاتصال بقاعدة Airtable (كود الخطأ: {response.status_code}). يرجى التأكد من صحة الرموز السرية واسم الجدول في الـ Secrets.")
             return pd.DataFrame()
     except Exception as e:
-        st.error(f"حدث خطأ غير متوقع: {str(e)}")
+        st.error(f"حدث خطأ أثناء محاولة جلب البيانات: {str(e)}")
         return pd.DataFrame()
 
-# دالة لإضافة عملية جديدة إلى Airtable
+# دالة إضافة عملية جديدة
 def add_record(date, desc, record_type, category, amount, notes):
     payload = {
         "records": [
@@ -91,7 +96,7 @@ st.title("💰 برنامج الصندوق الشخصي")
 st.write("إدارة ومتابعة المدخولات والمصروفات الشخصية بكل سهولة وأمان.")
 st.markdown("---")
 
-# جلب البيانات الحالية
+# جلب البيانات الحالية وعرضها
 df = get_data()
 
 # 1. قسم الإحصائيات وعرض الرصيد الحالي
@@ -99,12 +104,10 @@ if not df.empty:
     df['التاريخ'] = pd.to_datetime(df['التاريخ']).dt.date
     df = df.sort_values(by="التاريخ", ascending=False)
     
-    # حساب الإجماليات
     total_income = df[df["النوع"] == "المدخول"]["المبلغ"].sum()
     total_expense = df[df["النوع"] == "المصروف"]["المبلغ"].sum()
     current_balance = total_income - total_expense
     
-    # عرض الإحصائيات ببطاقات ملونة
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric(label="💵 إجمالي المدخول", value=f"{total_income:,.2f}")
@@ -144,7 +147,7 @@ if submit_button:
                 st.success("تم تسجيل وحفظ العملية بنجاح!")
                 st.rerun()
             else:
-                st.error("حدث خطأ أثناء محاولة حفظ البيانات، يرجى مراجعة إعدادات الربط والـ Secrets.")
+                st.error("حدث خطأ أثناء محاولة حفظ البيانات، يرجى مراجعة إعدادات الـ Secrets.")
 
 st.markdown("---")
 
@@ -153,4 +156,4 @@ st.subheader("📋 سجل العمليات المدخلة (الأحدث أولا
 if not df.empty:
     st.dataframe(df, use_container_width=True)
 else:
-    st.write("الجدول فارغ، قم بإضافة أولى عملياتك من النموذج أعلاه لتبدأ بالظهور هنا.")
+    st.write("الجدول فارغ، قم بإضافة أولى عملياتك من النموذج لتبدأ بالظهور هنا.")
