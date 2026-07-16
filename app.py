@@ -7,13 +7,13 @@ import base64
 # إعدادات الصفحة
 st.set_page_config(page_title="الصندوق الشخصي", page_icon="💰", layout="centered")
 
-# فك تشفير الرمز السري الجديد تلقائياً بأمان
+# فك تشفير الرمز السري الجديد تلقائياً
 ENCODED_KEY = "cGF0bmtsZ05WT0xlWjJ1RGYuNTk2NjgzMDM5NmRmOGUxOGNhNzkwYzVmYWU1NDlhZDdjOTk3Y2YxZDFjYWFjMDI2MTE1OTFkNDIzM2ZjNzYyYg=="
 AIRTABLE_API_KEY = base64.b64decode(ENCODED_KEY).decode("utf-8")
 
-# إعدادات جدولك الفعلي الجديد
+# الإعدادات الصحيحة والمطابقة لجدولك تماماً
 BASE_ID = "app8p8z76mWPa3fET"
-TABLE_NAME = "tbl4VJzkXSFfZpvOd"
+TABLE_NAME = "Table 1"  # تم التغيير لاسم الجدول المباشر لضمان تجنب خطأ 404
 
 # إعداد رأس الطلب للاتصال بـ Airtable
 headers = {
@@ -31,35 +31,36 @@ def fetch_data():
             data = []
             for r in records:
                 fields = r.get("fields", {})
+                # نجلب الحقول المتوفرة لديك بالجدول
                 data.append({
                     "البيان": fields.get("البيان", ""),
                     "النوع": fields.get("النوع", ""),
-                    "الفئة": fields.get("الفئة", ""),
                     "المبلغ": fields.get("المبلغ", 0),
                     "التاريخ": fields.get("التاريخ", "")
                 })
-            # ترتيب الأعمدة لتظهر بشكل منسق في جدول عرض البيانات
             df = pd.DataFrame(data)
             if not df.empty:
-                cols = ["التاريخ", "النوع", "الفئة", "المبلغ", "البيان"]
+                # ترتيب الأعمدة للعرض
+                cols = ["التاريخ", "النوع", "المبلغ", "البيان"]
                 df = df.reindex(columns=[c for c in cols if c in df.columns])
             return df
         else:
+            # هنا سنظهر لك تفاصيل الخطأ القادمة من Airtable لتعرف السبب بدقة
             st.error(f"فشل الاتصال بـ Airtable. رمز الخطأ: {response.status_code}")
+            st.write(f"تفاصيل استجابة الخادم: {response.text}")
             return pd.DataFrame()
     except Exception as e:
-        st.error(f"حدث خطأ أثناء الاتصال: {e}")
+        st.error(f"حدث خطأ غير متوقع: {e}")
         return pd.DataFrame()
 
 # دالة لإضافة معاملة جديدة
-def add_record(date, trans_type, category, amount, description):
+def add_record(date, trans_type, amount, description):
     payload = {
         "records": [
             {
                 "fields": {
                     "البيان": description,
                     "النوع": trans_type,
-                    "الفئة": category,
                     "المبلغ": float(amount),
                     "التاريخ": date.strftime("%Y-%m-%d")
                 }
@@ -68,10 +69,12 @@ def add_record(date, trans_type, category, amount, description):
     }
     try:
         response = requests.post(url, headers=headers, json=payload)
-        return response.status_code == 200
+        if response.status_code == 200:
+            return True, "تمت الإضافة بنجاح!"
+        else:
+            return False, f"رمز الخطأ {response.status_code}: {response.text}"
     except Exception as e:
-        st.error(f"حدث خطأ أثناء الإضافة: {e}")
-        return False
+        return False, str(e)
 
 # عنوان التطبيق
 st.title("💰 الصندوق الشخصي للمدخول والمصروفات")
@@ -85,7 +88,6 @@ with st.form("transaction_form", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         amount = st.number_input("المبلغ", min_value=0.1, step=1.0, format="%.2f")
-        category = st.text_input("الفئة (مثال: طعام، وقود، راتب...)")
     with col2:
         trans_type = st.selectbox("النوع", ["مصروف", "مدخول"])
         date = st.date_input("التاريخ", datetime.today())
@@ -95,15 +97,13 @@ with st.form("transaction_form", clear_on_submit=True):
     submit_button = st.form_submit_button("إضافة المعاملة")
 
 if submit_button:
-    if not category:
-         st.warning("الرجاء كتابة الفئة أولاً!")
+    success, message = add_record(date, trans_type, amount, description)
+    if success:
+        st.success("🎉 تم تسجيل المعاملة بنجاح وإرسالها إلى Airtable!")
+        st.rerun()
     else:
-        success = add_record(date, trans_type, category, amount, description)
-        if success:
-            st.success("🎉 تم تسجيل المعاملة بنجاح وإرسالها إلى Airtable!")
-            st.rerun() # تحديث الصفحة فوراً
-        else:
-            st.error("❌ حدث خطأ أثناء محاولة إرسال البيانات. تأكد من مطابقة أسماء الحقول في جدول Airtable.")
+        st.error(f"❌ حدث خطأ أثناء الإرسال. التفاصيل:")
+        st.code(message)
 
 st.markdown("---")
 
