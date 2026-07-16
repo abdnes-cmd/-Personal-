@@ -13,7 +13,7 @@ AIRTABLE_API_KEY = base64.b64decode(ENCODED_KEY).decode("utf-8")
 
 # الإعدادات الصحيحة والمطابقة لجدولك تماماً
 BASE_ID = "app8p8z76mWPa3fET"
-TABLE_NAME = "Table 1"  # تم التغيير لاسم الجدول المباشر لضمان تجنب خطأ 404
+TABLE_NAME = "Table 1"  
 
 # إعداد رأس الطلب للاتصال بـ Airtable
 headers = {
@@ -31,7 +31,6 @@ def fetch_data():
             data = []
             for r in records:
                 fields = r.get("fields", {})
-                # نجلب الحقول المتوفرة لديك بالجدول
                 data.append({
                     "البيان": fields.get("البيان", ""),
                     "النوع": fields.get("النوع", ""),
@@ -40,14 +39,11 @@ def fetch_data():
                 })
             df = pd.DataFrame(data)
             if not df.empty:
-                # ترتيب الأعمدة للعرض
                 cols = ["التاريخ", "النوع", "المبلغ", "البيان"]
                 df = df.reindex(columns=[c for c in cols if c in df.columns])
             return df
         else:
-            # هنا سنظهر لك تفاصيل الخطأ القادمة من Airtable لتعرف السبب بدقة
             st.error(f"فشل الاتصال بـ Airtable. رمز الخطأ: {response.status_code}")
-            st.write(f"تفاصيل استجابة الخادم: {response.text}")
             return pd.DataFrame()
     except Exception as e:
         st.error(f"حدث خطأ غير متوقع: {e}")
@@ -59,8 +55,9 @@ def add_record(date, trans_type, amount, description):
         "records": [
             {
                 "fields": {
+                    "Name": description,  # تعبئة الحقل الأساسي لتجنب Unnamed record
                     "البيان": description,
-                    "النوع": trans_type,
+                    "النوع": trans_type,   # سيرسل القيمة المطابقة تماماً (المصروف / المدخول)
                     "المبلغ": float(amount),
                     "التاريخ": date.strftime("%Y-%m-%d")
                 }
@@ -89,7 +86,8 @@ with st.form("transaction_form", clear_on_submit=True):
     with col1:
         amount = st.number_input("المبلغ", min_value=0.1, step=1.0, format="%.2f")
     with col2:
-        trans_type = st.selectbox("النوع", ["مصروف", "مدخول"])
+        # تعديل الخيارات هنا لتطابق الحقول في Airtable تماماً بـ ال التعريف
+        trans_type = st.selectbox("النوع", ["المصروف", "المدخول"])
         date = st.date_input("التاريخ", datetime.today())
         
     description = st.text_input("البيان / الوصف")
