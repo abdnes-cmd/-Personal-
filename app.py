@@ -8,7 +8,7 @@ import base64
 st.set_page_config(page_title="الصندوق الشخصي", page_icon="💰", layout="centered")
 
 # فك تشفير الرمز السري الجديد تلقائياً بأمان
-ENCODED_KEY = "cGF0SzhhWkU2eUozTWt6THUuN2ZlZTE0NDJkOTdmZTYwNDg3YWZiNjZjNzg2YTc5MzUwZDk4NGNmMjY1YTcyYjc2Y2UxZWQ2Y2YzMWRhNTFjMw=="
+ENCODED_KEY = "cGF0bmtsZ05WT0xlWjJ1RGYuNTk2NjgzMDM5NmRmOGUxOGNhNzkwYzVmYWU1NDlhZDdjOTk3Y2YxZDFjYWFjMDI2MTE1OTFkNDIzM2ZjNzYyYg=="
 AIRTABLE_API_KEY = base64.b64decode(ENCODED_KEY).decode("utf-8")
 
 # إعدادات جدولك الفعلي الجديد
@@ -51,7 +51,7 @@ def fetch_data():
         st.error(f"حدث خطأ أثناء الاتصال: {e}")
         return pd.DataFrame()
 
-# دالة لإضافة معاملة جديدة وتعيين العمود الرئيسي كـ "البيان"
+# دالة لإضافة معاملة جديدة
 def add_record(date, trans_type, category, amount, description):
     payload = {
         "records": [
