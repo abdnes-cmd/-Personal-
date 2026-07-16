@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 from datetime import datetime
 import base64
+import io
 
 st.set_page_config(page_title="الصندوق الشخصي", page_icon="💰", layout="wide")
 
@@ -97,12 +98,76 @@ with tab2:
                     requests.delete(f"{url}/{r_id}", headers=headers)
                 st.rerun()
     
+    st.markdown("---")
+    
+    # قسم النسخ الاحتياطي والاستعادة
+    st.markdown("### 💾 النسخ الاحتياطي والاستعادة (Backup & Restore)")
+    col_back1, col_back2 = st.columns(2)
+    
+    with col_back1:
+        st.write("**1. تحميل نسخة احتياطية:**")
+        if not df.empty:
+            # تحويل البيانات إلى ملف Excel في الذاكرة لتنزيله مباشرة
+            buffer = io.BytesIO()
+            # استبعاد عمود الـ ID الخاص بـ Airtable عند الحفظ لجعل الملف نظيفاً
+            backup_df = df.drop(columns=["ID"]) if "ID" in df.columns else df
+            
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                backup_df.to_excel(writer, index=False, sheet_name='البيانات')
+            
+            st.download_button(
+                label="📥 تحميل ملف النسخة الاحتياطية (Excel)",
+                data=buffer.getvalue(),
+                file_name=f"صندوق_شخصي_نسخة_{datetime.today().strftime('%Y-%m-%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        else:
+            st.warning("لا توجد بيانات حالياً لتصديرها كنسخة احتياطية.")
+            
+    with col_back2:
+        st.write("**2. استعادة من نسخة سابقة:**")
+        uploaded_file = st.file_uploader("ارفع ملف الـ Excel لاستعادة البيانات:", type=["xlsx"])
+        if uploaded_file is not None:
+            if st.button("⏪ بدء عملية الاستعادة الآن", type="primary", use_container_width=True):
+                try:
+                    # قراءة الملف المرفوع
+                    restore_df = pd.read_excel(uploaded_file)
+                    
+                    # التأكد من أن الأعمدة المطلوبة موجودة
+                    required_columns = ["التاريخ", "النوع", "المبلغ", "البيان"]
+                    if all(col in restore_df.columns for col in required_columns):
+                        
+                        progress_bar = st.progress(0)
+                        total_rows = len(restore_df)
+                        
+                        # رفع الأسطر واحداً تلو الآخر إلى Airtable
+                        for idx, row in restore_df.iterrows():
+                            payload = {
+                                "records": [{
+                                    "fields": {
+                                        "Name": str(row["البيان"]) if pd.notna(row["البيان"]) else "",
+                                        "البيان": str(row["البيان"]) if pd.notna(row["البيان"]) else "",
+                                        "النوع": str(row["النوع"]),
+                                        "المبلغ": float(row["المبلغ"]),
+                                        "التاريخ": str(row["التاريخ"])
+                                    }
+                                }]
+                            }
+                            requests.post(url, headers=headers, json=payload)
+                            progress_bar.progress((idx + 1) / total_rows)
+                        
+                        st.success("🎉 تم استيراد واستعادة جميع البيانات بنجاح!")
+                        st.rerun()
+                    else:
+                        st.error("تنبيه: أعمدة ملف الـ Excel المرفوع غير مطابقة لملفات الصندوق الأصلية.")
+                except Exception as e:
+                    st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
+
+    st.markdown("---")
     st.markdown("### 🗑️ حذف معاملات محددة")
     if not df.empty:
-        # يتيح للمستخدم اختيار سطر أو أكثر لحذفه
-        st.write("اختر المعاملة (أو المعاملات) التي تريد حذفها من الجدول في الأسفل، ثم اضغط على زر الحذف أدناه:")
-        
-        # سنعرض قائمة منسدلة بالمعاملات المتاحة ليسهل حذفها بشكل مباشر وآمن
+        st.write("اختر المعاملة (أو المعاملات) التي تريد حذفها:")
         options = {f"{row['التاريخ']} - {row['النوع']} - {row['المبلغ']} ({row['البيان']})": row['ID'] for _, row in df.iterrows()}
         selected_to_delete = st.multiselect("اختر المعاملات المراد حذفها:", options=list(options.keys()))
         
@@ -111,19 +176,16 @@ with tab2:
                 for item in selected_to_delete:
                     record_id = options[item]
                     requests.delete(f"{url}/{record_id}", headers=headers)
-                st.success("تم حذف المعاملات المحددة بنجاح!")
+                st.success("تم الحذف!")
                 st.rerun()
             else:
-                st.warning("الرجاء اختيار معاملة واحدة على الأقل لحذفها.")
-    else:
-        st.info("لا توجد بيانات لحذفها.")
+                st.warning("الرجاء اختيار معاملة.")
 
 st.markdown("---")
 
 # 3. عرض الجدول
 st.subheader("📊 تفاصيل المعاملات")
 if not df.empty:
-    # عرض الجدول بدون إظهار عمود الـ ID الخاص بـ Airtable للمستخدم
     display_df = df.drop(columns=["ID"])
     st.dataframe(display_df, use_container_width=True)
 else:
