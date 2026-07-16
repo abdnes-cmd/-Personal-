@@ -24,27 +24,27 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# جلب الرموز السرية من الإعدادات
-AIRTABLE_API_KEY = st.secrets["airtable"]["api_key"]
-AIRTABLE_BASE_ID = st.secrets["airtable"]["base_id"]
-AIRTABLE_TABLE_NAME = st.secrets["airtable"]["table_name"]
+# جلب الرموز السرية وتنظيفها من أي مسافات زائدة
+AIRTABLE_API_KEY = str(st.secrets["airtable"]["api_key"]).strip()
+AIRTABLE_BASE_ID = str(st.secrets["airtable"]["base_id"]).strip()
+AIRTABLE_TABLE_NAME = str(st.secrets["airtable"]["table_name"]).strip()
 
-# تشفير اسم الجدول آلياً لتفادي مشكلة الـ latin-1 codec نهائياً
+# تشفير اسم الجدول بشكل آمن تماماً للروابط
 ENCODED_TABLE_NAME = urllib.parse.quote(AIRTABLE_TABLE_NAME)
 
 # بناء الرابط بشكل آمن ليدعم كافة الحروف والرموز
 AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{ENCODED_TABLE_NAME}"
 
-# إعداد الهيدر مع تحديد تشفير utf-8 الصريح لمنع أي خطأ ترميز
+# إعداد الهيدر بطريقة تمنع التعارض مع الأحرف غير اللاتينية في التوكن
+# قمنا بتعديل طريقة كتابة التوكن للتأكد من خلوه من أي تشفير معقد قد يعيق المكتبة
 HEADERS = {
-    "Authorization": f"Bearer {AIRTABLE_API_KEY}",
+    "Authorization": f"Bearer {AIRTABLE_API_KEY}".encode('utf-8').decode('latin-1'),
     "Content-Type": "application/json; charset=utf-8"
 }
 
-# دالة جلب البيانات مع معالجة الأخطاء والترميز العربي
+# دالة جلب البيانات مع معالجة الأخطاء والترميز
 def get_data():
     try:
-        # إرسال الطلب مع تحديد التشفير بشكل قسري لمنع أي تعارض
         response = requests.get(AIRTABLE_URL, headers=HEADERS)
         response.encoding = 'utf-8' 
         
