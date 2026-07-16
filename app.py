@@ -67,11 +67,9 @@ with tab1:
         date = st.date_input("التاريخ", datetime.today())
         desc = st.text_input("البيان")
         
-        # زر الإرسال الخاص بالـ Form
         submitted = st.form_submit_button("إضافة")
         
         if submitted:
-            # تجهيز البيانات فور الضغط وقبل تفريغ الحقول تلقائياً
             payload = {
                 "records": [{
                     "fields": {
@@ -83,27 +81,49 @@ with tab1:
                     }
                 }]
             }
-            # إرسال البيانات إلى Airtable
             response = requests.post(url, headers=headers, json=payload)
-            
-            # إعادة تحديث الصفحة بمجرد نجاح العملية
             if response.status_code == 200:
                 st.rerun()
 
 with tab2:
-    if st.button("🔄 تحديث البيانات"): 
-        st.rerun()
-    if st.button("🚨 تصفير الصندوق بالكامل", type="primary"):
-        if not df.empty:
-            for r_id in df["ID"]: 
-                requests.delete(f"{url}/{r_id}", headers=headers)
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("🔄 تحديث البيانات", use_container_width=True): 
             st.rerun()
+    with col_btn2:
+        if st.button("🚨 تصفير الصندوق بالكامل", type="primary", use_container_width=True):
+            if not df.empty:
+                for r_id in df["ID"]: 
+                    requests.delete(f"{url}/{r_id}", headers=headers)
+                st.rerun()
+    
+    st.markdown("### 🗑️ حذف معاملات محددة")
+    if not df.empty:
+        # يتيح للمستخدم اختيار سطر أو أكثر لحذفه
+        st.write("اختر المعاملة (أو المعاملات) التي تريد حذفها من الجدول في الأسفل، ثم اضغط على زر الحذف أدناه:")
+        
+        # سنعرض قائمة منسدلة بالمعاملات المتاحة ليسهل حذفها بشكل مباشر وآمن
+        options = {f"{row['التاريخ']} - {row['النوع']} - {row['المبلغ']} ({row['البيان']})": row['ID'] for _, row in df.iterrows()}
+        selected_to_delete = st.multiselect("اختر المعاملات المراد حذفها:", options=list(options.keys()))
+        
+        if st.button("❌ حذف المعاملات المحددة", type="secondary"):
+            if selected_to_delete:
+                for item in selected_to_delete:
+                    record_id = options[item]
+                    requests.delete(f"{url}/{record_id}", headers=headers)
+                st.success("تم حذف المعاملات المحددة بنجاح!")
+                st.rerun()
+            else:
+                st.warning("الرجاء اختيار معاملة واحدة على الأقل لحذفها.")
+    else:
+        st.info("لا توجد بيانات لحذفها.")
 
 st.markdown("---")
 
 # 3. عرض الجدول
 st.subheader("📊 تفاصيل المعاملات")
 if not df.empty:
+    # عرض الجدول بدون إظهار عمود الـ ID الخاص بـ Airtable للمستخدم
     display_df = df.drop(columns=["ID"])
     st.dataframe(display_df, use_container_width=True)
 else:
