@@ -32,13 +32,18 @@ def fetch_data():
             for r in records:
                 fields = r.get("fields", {})
                 data.append({
-                    "التاريخ": fields.get("التاريخ", ""),
+                    "البيان": fields.get("البيان", ""),
                     "النوع": fields.get("النوع", ""),
                     "الفئة": fields.get("الفئة", ""),
                     "المبلغ": fields.get("المبلغ", 0),
-                    "البيان": fields.get("البيان", "")
+                    "التاريخ": fields.get("التاريخ", "")
                 })
-            return pd.DataFrame(data)
+            # ترتيب الأعمدة لتظهر بشكل منسق في جدول عرض البيانات
+            df = pd.DataFrame(data)
+            if not df.empty:
+                cols = ["التاريخ", "النوع", "الفئة", "المبلغ", "البيان"]
+                df = df.reindex(columns=[c for c in cols if c in df.columns])
+            return df
         else:
             st.error(f"فشل الاتصال بـ Airtable. رمز الخطأ: {response.status_code}")
             return pd.DataFrame()
@@ -46,17 +51,17 @@ def fetch_data():
         st.error(f"حدث خطأ أثناء الاتصال: {e}")
         return pd.DataFrame()
 
-# دالة لإضافة معاملة جديدة
+# دالة لإضافة معاملة جديدة وتعيين العمود الرئيسي كـ "البيان"
 def add_record(date, trans_type, category, amount, description):
     payload = {
         "records": [
             {
                 "fields": {
-                    "التاريخ": date.strftime("%Y-%m-%d"),
+                    "البيان": description,
                     "النوع": trans_type,
                     "الفئة": category,
                     "المبلغ": float(amount),
-                    "البيان": description
+                    "التاريخ": date.strftime("%Y-%m-%d")
                 }
             }
         ]
@@ -96,7 +101,7 @@ if submit_button:
         success = add_record(date, trans_type, category, amount, description)
         if success:
             st.success("🎉 تم تسجيل المعاملة بنجاح وإرسالها إلى Airtable!")
-            st.rerun() # تحديث الصفحة فوراً لرؤية النتيجة
+            st.rerun() # تحديث الصفحة فوراً
         else:
             st.error("❌ حدث خطأ أثناء محاولة إرسال البيانات. تأكد من مطابقة أسماء الحقول في جدول Airtable.")
 
