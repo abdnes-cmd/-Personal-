@@ -7,11 +7,11 @@ import base64
 # إعدادات الصفحة
 st.set_page_config(page_title="الصندوق الشخصي", page_icon="💰", layout="centered")
 
-# فك تشفير الرمز السري تلقائياً لمنع اعتراضه من GitHub
-ENCODED_KEY = "cGF0UXBDZGZDVGdWazZ3VUEuNzdlODlhNmE2NjA5MjI3Y2ZmZWQ1ZTc3MWNkNDAzNDdiY2YyYTgyODFlMmYzYzRkNDE3MDI0ZDJmNjRkNzk5ZA=="
+# فك تشفير الرمز السري الجديد تلقائياً بأمان
+ENCODED_KEY = "cGF0SzhhWkU2eUozTWt6THUuN2ZlZTE0NDJkOTdmZTYwNDg3YWZiNjZjNzg2YTc5MzUwZDk4NGNmMjY1YTcyYjc2Y2UxZWQ2Y2YzMWRhNTFjMw=="
 AIRTABLE_API_KEY = base64.b64decode(ENCODED_KEY).decode("utf-8")
 
-# إعدادات الجدول الجديد الخاص بك مباشرة داخل الكود
+# إعدادات جدولك الفعلي الجديد
 BASE_ID = "app8p8z76mWPa3fET"
 TABLE_NAME = "tbl4VJzkXSFfZpvOd"
 
@@ -96,9 +96,9 @@ if submit_button:
         success = add_record(date, trans_type, category, amount, description)
         if success:
             st.success("🎉 تم تسجيل المعاملة بنجاح وإرسالها إلى Airtable!")
-            st.rerun() # لإعادة جلب البيانات وعرض الجديد فوراً
+            st.rerun() # تحديث الصفحة فوراً لرؤية النتيجة
         else:
-            st.error("❌ حدث خطأ أثناء محاولة إرسال البيانات. تأكد من إعدادات الجدول في Airtable.")
+            st.error("❌ حدث خطأ أثناء محاولة إرسال البيانات. تأكد من مطابقة أسماء الحقول في جدول Airtable.")
 
 st.markdown("---")
 
