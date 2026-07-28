@@ -6,13 +6,42 @@ import streamlit as st
 # إعداد الصفحة
 st.set_page_config(page_title="الصندوق الشخصي", page_icon="💰", layout="centered")
 
-# ملف تخزين البيانات محلياً
 DATA_FILE = "personal_box_data.csv"
 
 
 def load_data():
   if os.path.exists(DATA_FILE):
-    return pd.read_csv(DATA_FILE)
+    try:
+      df = pd.read_csv(DATA_FILE)
+      # التأكد من وجود الأعمدة المطلوبة لتجنب أخطاء الملفات القديمة
+      required_columns = [
+          "date",
+          "type",
+          "amount_usd",
+          "original_amount",
+          "currency",
+          "category",
+          "description",
+          "notes",
+      ]
+      for col in required_columns:
+        if col not in df.columns:
+          # إذا كان الملف قديماً، نقوم بإعادة تهيئته نظيفاً
+          return pd.DataFrame(columns=required_columns)
+      return df
+    except:
+      return pd.DataFrame(
+          columns=[
+              "date",
+              "type",
+              "amount_usd",
+              "original_amount",
+              "currency",
+              "category",
+              "description",
+              "notes",
+          ]
+      )
   else:
     return pd.DataFrame(
         columns=[
@@ -42,7 +71,7 @@ st.markdown("---")
 # الشريط الجانبي لإضافة معاملة جديدة
 st.sidebar.header("➕ إضافة معاملة جديدة")
 
-# تحديد سعر الصرف الحالي لليرة مقابل الدولار (يمكنك تغييره متى شئت)
+# تحديد سعر الصرف الحالي لليرة مقابل الدولار
 exchange_rate = st.sidebar.number_input(
     "سعر الصرف (ليرة لكل 1 دولار)", min_value=1.0, value=89500.0, step=100.0
 )
