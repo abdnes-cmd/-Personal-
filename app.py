@@ -6,7 +6,7 @@ import streamlit as st
 # إعداد الصفحة
 st.set_page_config(page_title="الصندوق الشخصي", page_icon="💰", layout="centered")
 
-# ملف تخزين البيانات محلياً لتجنب مشاكل الاتصال
+# ملف تخزين البيانات محلياً
 DATA_FILE = "personal_box_data.csv"
 
 
@@ -14,9 +14,17 @@ def load_data():
   if os.path.exists(DATA_FILE):
     return pd.read_csv(DATA_FILE)
   else:
-    # إنشاء جدول فارغ بالعمود المطلوبة إذا لم يكن موجوداً
     return pd.DataFrame(
-        columns=["date", "type", "amount", "category", "description", "notes"]
+        columns=[
+            "date",
+            "type",
+            "amount_usd",
+            "original_amount",
+            "currency",
+            "category",
+            "description",
+            "notes",
+        ]
     )
 
 
@@ -34,10 +42,25 @@ st.markdown("---")
 # الشريط الجانبي لإضافة معاملة جديدة
 st.sidebar.header("➕ إضافة معاملة جديدة")
 
+# تحديد سعر الصرف الحالي لليرة مقابل الدولار (يمكنك تغييره متى شئت)
+exchange_rate = st.sidebar.number_input(
+    "سعر الصرف (ليرة لكل 1 دولار)", min_value=1.0, value=89500.0, step=100.0
+)
+
 with st.sidebar.form("transaction_form", clear_on_submit=True):
   t_date = st.date_input("التاريخ", value=datetime.today())
   t_type = st.selectbox("النوع", ["مدخول", "مصروف"])
-  t_amount = st.number_input("المبلغ", min_value=0.0, step=0.5)
+
+  # اختيار العملة والمبلغ
+  currency = st.selectbox("عملة الدفع", ["دولار ($)", "ليرة لبنانية (ل.ل)"])
+  t_amount = st.number_input("المبلغ المدفوع", min_value=0.0, step=1.0)
+
+  # حساب المبلغ بالدولار تلقائياً
+  if "ليرة" in currency:
+    amount_usd = t_amount / exchange_rate if exchange_rate > 0 else 0
+  else:
+    amount_usd = t_amount
+
   t_category = st.selectbox(
       "الفئة",
       [
@@ -59,34 +82,37 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
     new_row = {
         "date": str(t_date),
         "type": t_type,
-        "amount": float(t_amount),
+        "amount_usd": round(amount_usd, 2),
+        "original_amount": t_amount,
+        "currency": currency,
         "category": t_category,
         "description": t_description,
         "notes": t_notes,
     }
-    # إضافة الصف الجديد للجدول
     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     save_data(df)
-    st.sidebar.success("✅ تم حفظ المعاملة بنجاح!")
+    st.sidebar.success(
+        f"✅ تم الحفظ! (المبلغ بالدولار: ${amount_usd:,.2f})"
+    )
     st.rerun()
 
 # عرض البيانات والإجماليات
-st.subheader("📊 سجل المعاملات")
+st.subheader("📊 سجل المعاملات (بالدولار)")
 
 if not df.empty:
-  # حساب الإجماليات
-  total_income = df[df["type"] == "مدخول"]["amount"].sum()
-  total_expense = df[df["type"] == "مصروف"]["amount"].sum()
+  # حساب الإجماليات بالدولار
+  total_income = df[df["type"] == "مدخول"]["amount_usd"].sum()
+  total_expense = df[df["type"] == "مصروف"]["amount_usd"].sum()
   net_balance = total_income - total_expense
 
   col1, col2, col3 = st.columns(3)
-  col1.metric("إجمالي المداخيل", f"{total_income:,.2f}")
-  col2.metric("إجمالي المصاريف", f"{total_expense:,.2f}")
-  col3.metric("الصافي الحالي", f"{net_balance:,.2f}")
+  col1.metric("إجمالي المداخيل ($)", f"${total_income:,.2f}")
+  col2.metric("إجمالي المصاريف ($)", f"${total_expense:,.2f}")
+  col3.metric("الصافي الحالي ($)", f"${net_balance:,.2f}")
 
   st.markdown("---")
 
-  # عرض الجدول مع إضافة عمود الترقيم التلقائي (الرقم التسلسلي)
+  # عرض الجدول مع ترقيم تلقائي
   display_df = df.reset_index().rename(columns={"index": "ID"})
   display_df["ID"] = display_df["ID"] + 1
   st.dataframe(display_df, use_container_width=True)
