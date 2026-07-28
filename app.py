@@ -7,7 +7,7 @@ import urllib.parse
 # إعدادات الصفحة وتصميمها
 st.set_page_config(page_title="الصندوق الشخصي للمدخول والمصروف", page_icon="💰", layout="centered")
 
-# تعديل اتجاه الصفحة ليدعم اللغة العربية وتنسيق العناصر بشكل كامل
+# تعديل اتجاه الصفحة ليدعم اللغة العربية وتنسيق العناصر بشكل أفضل
 st.markdown("""
     <style>
     .reportview-container, .stApp {
@@ -32,7 +32,7 @@ try:
     AIRTABLE_BASE_ID = str(st.secrets["airtable"]["base_id"]).strip()
     AIRTABLE_TABLE_NAME = str(st.secrets["airtable"]["table_name"]).strip()
 except Exception:
-    st.error("⚠️ تنبيه: يرجى إعداد الـ Secrets الخاصة بـ Airtable (api_key, base_id, table_name) في إعدادات التطبيق على منصة الاستضافة.")
+    st.error("⚠️ تنبيه: يرجى إعداد الـ Secrets الخاصة بـ Airtable (api_key, base_id, table_name) في إعدادات التطبيق.")
     st.stop()
 
 # تشفير اسم الجدول آلياً
@@ -44,7 +44,7 @@ HEADERS = {
     "Content-Type": "application/json; charset=utf-8"
 }
 
-# دالة جلب البيانات من السحابة
+# دالة جلب البيانات
 def get_data():
     try:
         response = requests.get(AIRTABLE_URL, headers=HEADERS)
@@ -71,7 +71,7 @@ def get_data():
         st.error(f"حدث خطأ أثناء محاولة جلب البيانات: {str(e)}")
         return pd.DataFrame()
 
-# دالة إضافة عملية جديدة (راتب أو مصروف)
+# دالة إضافة عملية جديدة
 def add_record(date, desc, record_type, category, amount, notes):
     payload = {
         "records": [
@@ -98,45 +98,41 @@ st.title("💰 برنامج الصندوق الشخصي الشهري")
 st.write("إدارة ومتابعة الراتب والمصروفات مقسمة ومستقلة حسب كل شهر بكل سهولة.")
 st.markdown("---")
 
-# جلب البيانات الحالية من السحابة
+# جلب البيانات الحالية
 df = get_data()
 
 if not df.empty:
-    # تحويل العمود لتاريخ لسهولة الفلترة والاستقلالية
+    # تحويل العمود لتاريخ لسهولة المعالجة
     df['التاريخ_تاريخ'] = pd.to_datetime(df['التاريخ'], errors='coerce')
     df = df.dropna(subset=['التاريخ_تاريخ']) # استبعاد أي تاريخ غير صالح
     df = df.sort_values(by="التاريخ_تاريخ", ascending=False)
     
-    # استخراج الأشهر والسنوات المتوفرة في البيانات (بصيغة YYYY-MM)
-    df['الشهر_والسنة'] = df['التاريخ_تاريخ'].dt.strftime('%Y-%m')
+    # استخراج الأشهر والسنوات المتوفرة في البيانات
+    df['الشهر_والسنة'] = df['التاريخ_تاريخ'].dt.strftime('%Y-%m') # صيغة (YYYY-MM)
     
     available_months = sorted(df['الشهر_والسنة'].unique(), reverse=True)
     
-    # خيار اختيار الشهر المستقل
+    # 1. أولاً: اختيار الشهر للتقرير
     st.subheader("📅 اختيار الشهر للتقرير المستقل")
-    
-    # تحديد الشهر الحالي افتراضياً إن وجد في القائمة
     current_month_str = datetime.date.today().strftime('%Y-%m')
     default_index = available_months.index(current_month_str) if current_month_str in available_months else 0
     
     selected_month = st.selectbox("اختر الشهر المراد عرضه ومتابعته:", available_months, index=default_index)
     
-    # تصفية البيانات حصرياً حسب الشهر المحدد لتكون المستجدات والإحصائيات خاصة به وحده
+    # تصفية البيانات حسب الشهر المحدد
     filtered_df = df[df['الشهر_والسنة'] == selected_month]
     
-    # حساب الإحصائيات الخاصة بالشهر المختار فقط
+    # حساب الإحصائيات للشهر المختار
     total_income = filtered_df[filtered_df["النوع"] == "المدخول"]["المبلغ"].sum()
     total_expense = filtered_df[filtered_df["النوع"] == "المصروف"]["المبلغ"].sum()
     monthly_balance = total_income - total_expense
     
-    # عرض ملخص الشهر المستقل
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(label=f"💵 إجمالي الراتب/المدخول ({selected_month})", value=f"{total_income:,.2f}")
-    with col2:
-        st.metric(label=f"💸 إجمالي المصروفات ({selected_month})", value=f"{total_expense:,.2f}")
-    with col3:
-        st.metric(label=f"🏦 المتبقي (صافي الشهر)", value=f"{monthly_balance:,.2f}", delta=f"{monthly_balance:,.2f}")
+    # 2. ثانياً: عرض اللوحة المالية (الملخص بترتيب عمودي مشابه لبرنامج المسجد)
+    st.markdown(f"### 📊 لوحة التحطم المالية لشهر ({selected_month})")
+    
+    st.metric(label="🏦 رصيد الصندوق المتبقي الحالي ($)", value=f"${monthly_balance:,.2f}", delta=f"${monthly_balance:,.2f}")
+    st.metric(label="🟢 إجمالي المدخول / الراتب ($)", value=f"${total_income:,.2f}")
+    st.metric(label="🔴 إجمالي المصروفات ($)", value=f"${total_expense:,.2f}")
 
     st.markdown("---")
     
@@ -146,24 +142,24 @@ if not df.empty:
     st.dataframe(display_df, use_container_width=True)
 
 else:
-    st.info("لا توجد عمليات مسجلة حالياً. يمكنك البدء بتسجيل راتبك أو مصروفاتك أدناه.")
+    st.info("لا توجد عمليات مسجلة حالياً لبدء الفلترة الشهرية. يمكنك البدء بإضافة أول عملية أدناه.")
 
 st.markdown("---")
 
-# نموذج إدخال عملية جديدة (سواء كان راتب مدخول أو مصروف)
+# 3. نموذج إدخال عملية جديدة في الأسفل
 st.subheader("📝 تسجيل عملية جديدة (راتب / مصروف)")
 with st.form("add_transaction_form", clear_on_submit=True):
     col_a, col_b = st.columns(2)
     
     with col_a:
         date_val = st.date_input("التاريخ (سيتم توجيه العملية لشهرها تلقائياً)", datetime.date.today())
-        desc_val = st.text_input("البيان / الوصف (مثال: راتب شهر يوليو، فاتورة كهرباء)")
-        amount_val = st.number_input("المبلغ", min_value=0.0, step=1.0, format="%.2f")
+        desc_val = st.text_input("البيان / الوصف (مثال: راتب، صيانة سيارة)")
+        amount_val = st.number_input("المبلغ ($)", min_value=0.0, step=1.0, format="%.2f")
         
     with col_b:
         type_val = st.selectbox("النوع", ["المدخول", "المصروف"])
         category_val = st.selectbox("الفئة", ["راتب وعمل", "منزل", "سيارة", "طاقة شمسية", "أخرى"])
-        notes_val = st.text_area("ملاحظات إضافية (اختياري)")
+        notes_val = st.text_area("ملاحظات إضافية")
         
     submit_button = st.form_submit_button("حفظ العملية في السحابة")
 
@@ -171,7 +167,7 @@ if submit_button:
     if desc_val.strip() == "" or amount_val <= 0.0:
         st.warning("الرجاء تعبئة حقل البيان وإدخال قيمة صحيحة للمبلغ لإتمام الحفظ.")
     else:
-        with st.spinner("جاري حفظ العملية في قاعدة البيانات السحابية..."):
+        with st.spinner("جاري حفظ العملية في السحابة..."):
             success = add_record(date_val, desc_val, type_val, category_val, amount_val, notes_val)
             if success:
                 st.success("تم تسجيل وحفظ العملية بنجاح!")
