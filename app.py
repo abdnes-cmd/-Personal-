@@ -1,192 +1,170 @@
 import streamlit as st
-import requests
 import pandas as pd
-from datetime import datetime
-import base64
-import io
+import requests
+import datetime
+import urllib.parse
 
-st.set_page_config(page_title="الصندوق الشخصي", page_icon="💰", layout="wide")
+# إعدادات الصفحة وتصميمها
+st.set_page_config(page_title="الصندوق الشخصي للمدخول والمصروف", page_icon="💰", layout="centered")
 
-# إعدادات Airtable
-ENCODED_KEY = "cGF0bmtsZ05WT0xlWjJ1RGYuNTk2NjgzMDM5NmRmOGUxOGNhNzkwYzVmYWU1NDlhZDdjOTk3Y2YxZDFjYWFjMDI2MTE1OTFkNDIzM2ZjNzYyYg=="
-AIRTABLE_API_KEY = base64.b64decode(ENCODED_KEY).decode("utf-8")
-BASE_ID = "app8p8z76mWPa3fET"
-TABLE_NAME = "Table 1"
-headers = {"Authorization": f"Bearer {AIRTABLE_API_KEY}", "Content-Type": "application/json"}
-url = f"https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}"
+# تعديل اتجاه الصفحة ليدعم اللغة العربية
+st.markdown("""
+    <style>
+    .reportview-container {
+        direction: RTL;
+        text-align: right;
+    }
+    .stMarkdown, div[data-testid="stBlock"] {
+        direction: RTL;
+        text-align: right;
+    }
+    div[data-baseweb="select"] {
+        direction: RTL;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# جلب الرموز السرية وتنظيفها
+AIRTABLE_API_KEY = str(st.secrets["airtable"]["api_key"]).strip()
+AIRTABLE_BASE_ID = str(st.secrets["airtable"]["base_id"]).strip()
+AIRTABLE_TABLE_NAME = str(st.secrets["airtable"]["table_name"]).strip()
+
+# تشفير اسم الجدول آلياً
+ENCODED_TABLE_NAME = urllib.parse.quote(AIRTABLE_TABLE_NAME)
+AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{ENCODED_TABLE_NAME}"
+
+HEADERS = {
+    "Authorization": f"Bearer {AIRTABLE_API_KEY}".encode('utf-8').decode('latin-1'),
+    "Content-Type": "application/json; charset=utf-8"
+}
 
 # دالة جلب البيانات
-def fetch_data():
+def get_data():
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(AIRTABLE_URL, headers=HEADERS)
+        response.encoding = 'utf-8' 
+        
         if response.status_code == 200:
             records = response.json().get("records", [])
             data = []
             for r in records:
                 fields = r.get("fields", {})
                 data.append({
-                    "ID": r.get("id"),
                     "التاريخ": fields.get("التاريخ", ""),
+                    "البيان": fields.get("البيان", ""),
                     "النوع": fields.get("النوع", ""),
-                    "المبلغ": fields.get("المبلغ", 0),
-                    "البيان": fields.get("البيان", "")
+                    "الفئة": fields.get("الفئة", ""),
+                    "المبلغ": fields.get("المبلغ", 0.0),
+                    "ملاحظات": fields.get("ملاحظات", "")
                 })
             return pd.DataFrame(data)
+        else:
+            st.error(f"تنبيه: فشل الاتصال بقاعدة Airtable (كود الخطأ: {response.status_code}). يرجى التأكد من صحة الرموز السرية واسم الجدول في الـ Secrets.")
+            return pd.DataFrame()
+    except Exception as e:
+        st.error(f"حدث خطأ أثناء محاولة جلب البيانات: {str(e)}")
         return pd.DataFrame()
-    except: 
-        return pd.DataFrame()
 
-# --- واجهة التطبيق ---
-st.title("💰 الصندوق الشخصي")
+# دالة إضافة عملية جديدة
+def add_record(date, desc, record_type, category, amount, notes):
+    payload = {
+        "records": [
+            {
+                "fields": {
+                    "التاريخ": str(date),
+                    "البيان": desc,
+                    "النوع": record_type,
+                    "الفئة": category,
+                    "المبلغ": float(amount),
+                    "ملاحظات": notes
+                }
+            }
+        ]
+    }
+    try:
+        response = requests.post(AIRTABLE_URL, headers=HEADERS, json=payload)
+        return response.status_code == 200
+    except Exception:
+        return False
 
-df = fetch_data()
+# عنوان البرنامج الرئيسي
+st.title("💰 برنامج الصندوق الشخصي الشهري")
+st.write("إدارة ومتابعة المدخولات والمصروفات مقسمة حسب الأشهر بكل سهولة.")
+st.markdown("---")
 
-# 1. لوحة التحكم (الخلاصة)
+# جلب البيانات الحالية
+df = get_data()
+
 if not df.empty:
-    income = df[df['النوع'] == 'المدخول']['المبلغ'].sum()
-    expense = df[df['النوع'] == 'المصروف']['المبلغ'].sum()
-    balance = income - expense
-else:
-    income, expense, balance = 0, 0, 0
+    # تحويل العمود لتاريخ لسهولة المعالجة
+    df['التاريخ_تاريخ'] = pd.to_datetime(df['التاريخ'], errors='coerce')
+    df = df.dropna(subset=['التاريخ_تاريخ']) # استبعاد أي تاريخ غير صالح
+    df = df.sort_values(by="التاريخ_تاريخ", ascending=False)
+    
+    # استخراج الأشهر والسنوات المتوفرة في البيانات
+    df['الشهر_والسنة'] = df['التاريخ_تاريخ'].dt.strftime('%Y-%m') # صيغة (YYYY-MM)
+    
+    available_months = sorted(df['الشهر_والسنة'].unique(), reverse=True)
+    
+    # خيار اختيار الشهر
+    st.subheader("📅 اختيار الشهر للتقرير")
+    selected_month = st.selectbox("اختر الشهر والمراد عرضه:", available_months)
+    
+    # تصفية البيانات حسب الشهر المحدد
+    filtered_df = df[df['الشهر_والسنة'] == selected_month]
+    
+    # حساب الإحصائيات للشهر المختار
+    total_income = filtered_df[filtered_df["النوع"] == "المدخول"]["المبلغ"].sum()
+    total_expense = filtered_df[filtered_df["النوع"] == "المصروف"]["المبلغ"].sum()
+    monthly_balance = total_income - total_expense
+    
+    # عرض ملخص الشهر
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(label=f"💵 مدخول ({selected_month})", value=f"{total_income:,.2f}")
+    with col2:
+        st.metric(label=f"💸 مصروف ({selected_month})", value=f"{total_expense:,.2f}")
+    with col3:
+        st.metric(label=f"🏦 صافي الشهر", value=f"{monthly_balance:,.2f}", delta=f"{monthly_balance:,.2f}")
 
-# عرض الأرقام في الأعلى
-col1, col2, col3 = st.columns(3)
-col1.metric("إجمالي المدخول", f"{income:,.2f}")
-col2.metric("إجمالي المصروف", f"{expense:,.2f}")
-col3.metric("الرصيد المتبقي (الصندوق)", f"{balance:,.2f}", delta_color="normal")
+    st.markdown("---")
+    
+    # عرض جدول عمليات الشهر المختار فقط
+    st.subheader(f"📋 عمليات شهر ({selected_month})")
+    # تجهيز الجدول للعرض الخالي من الأعمدة الإضافية
+    display_df = filtered_df.drop(columns=['التاريخ_تاريخ', 'الشهر_والسنة'])
+    st.dataframe(display_df, use_container_width=True)
+
+else:
+    st.info("لا توجد عمليات مسجلة حالياً لبدء الفلترة الشهرية.")
 
 st.markdown("---")
 
-# 2. أزرار الإدارة
-tab1, tab2 = st.tabs(["➕ إضافة معاملة", "⚙️ إدارة الصندوق"])
-
-with tab1:
-    with st.form("add_form", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        amount = c1.number_input("المبلغ", min_value=0.1, step=1.0)
-        trans_type = c2.selectbox("النوع", ["المصروف", "المدخول"])
-        date = st.date_input("التاريخ", datetime.today())
-        desc = st.text_input("البيان")
-        
-        submitted = st.form_submit_button("إضافة")
-        
-        if submitted:
-            payload = {
-                "records": [{
-                    "fields": {
-                        "Name": desc,
-                        "البيان": desc,
-                        "النوع": trans_type,
-                        "المبلغ": float(amount),
-                        "التاريخ": date.strftime("%Y-%m-%d")
-                    }
-                }]
-            }
-            response = requests.post(url, headers=headers, json=payload)
-            if response.status_code == 200:
-                st.rerun()
-
-with tab2:
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("🔄 تحديث البيانات", use_container_width=True): 
-            st.rerun()
-    with col_btn2:
-        if st.button("🚨 تصفير الصندوق بالكامل", type="primary", use_container_width=True):
-            if not df.empty:
-                for r_id in df["ID"]: 
-                    requests.delete(f"{url}/{r_id}", headers=headers)
-                st.rerun()
+# 2. نموذج إدخال عملية جديدة
+st.subheader("📝 تسجيل عملية جديدة")
+with st.form("add_transaction_form", clear_on_submit=True):
+    col_a, col_b = st.columns(2)
     
-    st.markdown("---")
-    
-    # قسم النسخ الاحتياطي والاستعادة
-    st.markdown("### 💾 النسخ الاحتياطي والاستعادة (Backup & Restore)")
-    col_back1, col_back2 = st.columns(2)
-    
-    with col_back1:
-        st.write("**1. تحميل نسخة احتياطية:**")
-        if not df.empty:
-            # تحويل البيانات إلى ملف Excel في الذاكرة لتنزيله مباشرة
-            buffer = io.BytesIO()
-            # استبعاد عمود الـ ID الخاص بـ Airtable عند الحفظ لجعل الملف نظيفاً
-            backup_df = df.drop(columns=["ID"]) if "ID" in df.columns else df
-            
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                backup_df.to_excel(writer, index=False, sheet_name='البيانات')
-            
-            st.download_button(
-                label="📥 تحميل ملف النسخة الاحتياطية (Excel)",
-                data=buffer.getvalue(),
-                file_name=f"صندوق_شخصي_نسخة_{datetime.today().strftime('%Y-%m-%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-        else:
-            st.warning("لا توجد بيانات حالياً لتصديرها كنسخة احتياطية.")
-            
-    with col_back2:
-        st.write("**2. استعادة من نسخة سابقة:**")
-        uploaded_file = st.file_uploader("ارفع ملف الـ Excel لاستعادة البيانات:", type=["xlsx"])
-        if uploaded_file is not None:
-            if st.button("⏪ بدء عملية الاستعادة الآن", type="primary", use_container_width=True):
-                try:
-                    # قراءة الملف المرفوع
-                    restore_df = pd.read_excel(uploaded_file)
-                    
-                    # التأكد من أن الأعمدة المطلوبة موجودة
-                    required_columns = ["التاريخ", "النوع", "المبلغ", "البيان"]
-                    if all(col in restore_df.columns for col in required_columns):
-                        
-                        progress_bar = st.progress(0)
-                        total_rows = len(restore_df)
-                        
-                        # رفع الأسطر واحداً تلو الآخر إلى Airtable
-                        for idx, row in restore_df.iterrows():
-                            payload = {
-                                "records": [{
-                                    "fields": {
-                                        "Name": str(row["البيان"]) if pd.notna(row["البيان"]) else "",
-                                        "البيان": str(row["البيان"]) if pd.notna(row["البيان"]) else "",
-                                        "النوع": str(row["النوع"]),
-                                        "المبلغ": float(row["المبلغ"]),
-                                        "التاريخ": str(row["التاريخ"])
-                                    }
-                                }]
-                            }
-                            requests.post(url, headers=headers, json=payload)
-                            progress_bar.progress((idx + 1) / total_rows)
-                        
-                        st.success("🎉 تم استيراد واستعادة جميع البيانات بنجاح!")
-                        st.rerun()
-                    else:
-                        st.error("تنبيه: أعمدة ملف الـ Excel المرفوع غير مطابقة لملفات الصندوق الأصلية.")
-                except Exception as e:
-                    st.error(f"حدث خطأ أثناء قراءة الملف: {e}")
-
-    st.markdown("---")
-    st.markdown("### 🗑️ حذف معاملات محددة")
-    if not df.empty:
-        st.write("اختر المعاملة (أو المعاملات) التي تريد حذفها:")
-        options = {f"{row['التاريخ']} - {row['النوع']} - {row['المبلغ']} ({row['البيان']})": row['ID'] for _, row in df.iterrows()}
-        selected_to_delete = st.multiselect("اختر المعاملات المراد حذفها:", options=list(options.keys()))
+    with col_a:
+        date_val = st.date_input("التاريخ", datetime.date.today())
+        desc_val = st.text_input("البيان / الوصف (مثال: راتب، صيانة سيارة)")
+        amount_val = st.number_input("المبلغ", min_value=0.0, step=1.0, format="%.2f")
         
-        if st.button("❌ حذف المعاملات المحددة", type="secondary"):
-            if selected_to_delete:
-                for item in selected_to_delete:
-                    record_id = options[item]
-                    requests.delete(f"{url}/{record_id}", headers=headers)
-                st.success("تم الحذف!")
+    with col_b:
+        type_val = st.selectbox("النوع", ["المدخول", "المصروف"])
+        category_val = st.selectbox("الفئة", ["منزل", "سيارة", "طاقة شمسية", "راتب وعمل", "أخرى"])
+        notes_val = st.text_area("ملاحظات إضافية")
+        
+    submit_button = st.form_submit_button("حفظ العملية")
+
+if submit_button:
+    if desc_val == "" or amount_val == 0.0:
+        st.warning("الرجاء تعبئة حقل البيان وإدخال قيمة المبلغ لإتمام الحفظ.")
+    else:
+        with st.spinner("جاري حفظ العملية في Airtable..."):
+            success = add_record(date_val, desc_val, type_val, category_val, amount_val, notes_val)
+            if success:
+                st.success("تم تسجيل وحفظ العملية بنجاح!")
                 st.rerun()
             else:
-                st.warning("الرجاء اختيار معاملة.")
-
-st.markdown("---")
-
-# 3. عرض الجدول
-st.subheader("📊 تفاصيل المعاملات")
-if not df.empty:
-    display_df = df.drop(columns=["ID"])
-    st.dataframe(display_df, use_container_width=True)
-else:
-    st.info("لا توجد بيانات.")
+                st.error("حدث خطأ أثناء محاولة حفظ البيانات، يرجى مراجعة إعدادات الـ Secrets.")
