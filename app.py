@@ -1,177 +1,116 @@
-import streamlit as st
+from datetime import datetime
 import pandas as pd
-import requests
-import datetime
-import urllib.parse
+from supabase import create_client
+import streamlit as st
 
-# إعدادات الصفحة وتصميمها
-st.set_page_config(page_title="الصندوق الشخصي للمدخول والمصروف", page_icon="💰", layout="centered")
+# إعداد الصفحة
+st.set_page_config(page_title="الصندوق الشخصي", page_icon="💰", layout="centered")
 
-# تعديل اتجاه الصفحة ليدعم اللغة العربية وتنسيق العناصر بشكل أفضل
-st.markdown("""
-    <style>
-    .reportview-container, .stApp {
-        direction: RTL;
-        text-align: right;
-    }
-    .stMarkdown, div[data-testid="stBlock"], div[data-baseweb="select"], .stTextInput, .stNumberInput, .stTextArea {
-        direction: RTL;
-        text-align: right;
-    }
-    .stSelectbox label, .stDateInput label, .stTextInput label, .stNumberInput label, .stTextArea label {
-        direction: RTL;
-        text-align: right;
-        float: right;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# جلب الرموز السرية وتنظيفها مع معالجة الأخطاء
+# جلب الإعدادات من Secrets
 try:
-    AIRTABLE_API_KEY = str(st.secrets["airtable"]["api_key"]).strip()
-    AIRTABLE_BASE_ID = str(st.secrets["airtable"]["base_id"]).strip()
-    AIRTABLE_TABLE_NAME = str(st.secrets["airtable"]["table_name"]).strip()
-except Exception:
-    st.error("⚠️ تنبيه: يرجى إعداد الـ Secrets الخاصة بـ Airtable (api_key, base_id, table_name) في إعدادات التطبيق.")
-    st.stop()
+  SUPABASE_URL = st.secrets["SUPABASE_URL"]
+  SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+  TABLE_NAME = st.secrets["table_name"]
+except Exception as e:
+  st.error(
+      "⚠️ يرجى التأكد من إضافة إعدادات الـ Secrets بشكل صحيح في لوحة تحكم"
+      " Streamlit."
+  )
+  st.stop()
 
-# تشفير اسم الجدول آلياً
-ENCODED_TABLE_NAME = urllib.parse.quote(AIRTABLE_TABLE_NAME)
-AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{ENCODED_TABLE_NAME}"
 
-# التعديل النهائي لضمان نجاح الاتصال وتجنب خطأ 401
-HEADERS = {
-    "Authorization": f"Bearer {AIRTABLE_API_KEY}",
-    "Content-Type": "application/json"
-}
+# الاتصال بـ Supabase
+@st.cache_resource
+def init_connection():
+  return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# دالة جلب البيانات
-def get_data():
-    try:
-        response = requests.get(AIRTABLE_URL, headers=HEADERS)
-        response.encoding = 'utf-8' 
-        
-        if response.status_code == 200:
-            records = response.json().get("records", [])
-            data = []
-            for r in records:
-                fields = r.get("fields", {})
-                data.append({
-                    "التاريخ": fields.get("التاريخ", ""),
-                    "البيان": fields.get("البيان", ""),
-                    "النوع": fields.get("النوع", ""),
-                    "الفئة": fields.get("الفئة", ""),
-                    "المبلغ": fields.get("المبلغ", 0.0),
-                    "ملاحظات": fields.get("ملاحظات", "")
-                })
-            return pd.DataFrame(data)
-        else:
-            st.error(f"تنبيه: فشل الاتصال بقاعدة Airtable (كود الخطأ: {response.status_code}). يرجى التأكد من صحة الرموز السرية واسم الجدول في الـ Secrets.")
-            return pd.DataFrame()
-    except Exception as e:
-        st.error(f"حدث خطأ أثناء محاولة جلب البيانات: {str(e)}")
-        return pd.DataFrame()
 
-# دالة إضافة عملية جديدة
-def add_record(date, desc, record_type, category, amount, notes):
-    payload = {
-        "records": [
-            {
-                "fields": {
-                    "التاريخ": str(date),
-                    "البيان": desc,
-                    "النوع": record_type,
-                    "الفئة": category,
-                    "المبلغ": float(amount),
-                    "ملاحظات": notes
-                }
-            }
-        ]
-    }
-    try:
-        response = requests.post(AIRTABLE_URL, headers=HEADERS, json=payload)
-        return response.status_code == 200
-    except Exception:
-        return False
+supabase = init_connection()
 
-# عنوان البرنامج الرئيسي
-st.title("💰 برنامج الصندوق الشخصي الشهري")
-st.write("إدارة ومتابعة الراتب والمصروفات مقسمة ومستقلة حسب كل شهر بكل سهولة.")
+# عنوان التطبيق
+st.title("💰 إدارة الصندوق الشخصي")
 st.markdown("---")
 
-# جلب البيانات الحالية
-df = get_data()
+# الشريط الجانبي لإضافة معاملة جديدة
+st.sidebar.header("➕ إضافة معاملة جديدة")
 
-if not df.empty:
-    # تحويل العمود لتاريخ لسهولة المعالجة
-    df['التاريخ_تاريخ'] = pd.to_datetime(df['التاريخ'], errors='coerce')
-    df = df.dropna(subset=['التاريخ_تاريخ']) # استبعاد أي تاريخ غير صالح
-    df = df.sort_values(by="التاريخ_تاريخ", ascending=False)
-    
-    # استخراج الأشهر والسنوات المتوفرة في البيانات
-    df['الشهر_والسنة'] = df['التاريخ_تاريخ'].dt.strftime('%Y-%m') # صيغة (YYYY-MM)
-    
-    available_months = sorted(df['الشهر_والسنة'].unique(), reverse=True)
-    
-    # 1. أولاً: اختيار الشهر للتقرير
-    st.subheader("📅 اختيار الشهر للتقرير المستقل")
-    current_month_str = datetime.date.today().strftime('%Y-%m')
-    default_index = available_months.index(current_month_str) if current_month_str in available_months else 0
-    
-    selected_month = st.selectbox("اختر الشهر المراد عرضه ومتابعته:", available_months, index=default_index)
-    
-    # تصفية البيانات حسب الشهر المحدد
-    filtered_df = df[df['الشهر_والسنة'] == selected_month]
-    
-    # حساب الإحصائيات للشهر المختار
-    total_income = filtered_df[filtered_df["النوع"] == "المدخول"]["المبلغ"].sum()
-    total_expense = filtered_df[filtered_df["النوع"] == "المصروف"]["المبلغ"].sum()
-    monthly_balance = total_income - total_expense
-    
-    # 2. ثانياً: عرض اللوحة المالية (الملخص بترتيب عمودي مشابه لبرنامج المسجد)
-    st.markdown(f"### 📊 لوحة التحطم المالية لشهر ({selected_month})")
-    
-    st.metric(label="🏦 رصيد الصندوق المتبقي الحالي ($)", value=f"${monthly_balance:,.2f}", delta=f"${monthly_balance:,.2f}")
-    st.metric(label="🟢 إجمالي المدخول / الراتب ($)", value=f"${total_income:,.2f}")
-    st.metric(label="🔴 إجمالي المصروفات ($)", value=f"${total_expense:,.2f}")
+with st.sidebar.form("transaction_form", clear_on_submit=True):
+  t_date = st.date_input("التاريخ", value=datetime.today())
+  t_type = st.selectbox("النوع", ["مدخول", "مصروف"])
+  t_amount = st.number_input("المبلغ", min_value=0.0, step=0.5)
+  t_category = st.selectbox(
+      "الفئة",
+      [
+          "راتب",
+          "تجارة",
+          "أكل وشرب",
+          "فواتير",
+          "مواصلات",
+          "ترفيه",
+          "متفرقات",
+      ],
+  )
+  t_description = st.text_input("البيان / الوصف")
+  t_notes = st.text_area("ملاحظات")
+
+  submit_button = st.form_submit_button(label="حفظ المعاملة")
+
+  if submit_button:
+    try:
+      data = {
+          "date": str(t_date),
+          "type": t_type,
+          "amount": float(t_amount),
+          "category": t_category,
+          "description": t_description,
+          "notes": t_notes,
+      }
+      response = supabase.table(TABLE_NAME).insert(data).execute()
+      st.sidebar.success("✅ تم حفظ المعاملة بنجاح!")
+      st.rerun()
+    except Exception as e:
+      st.sidebar.error(f"❌ حدث خطأ أثناء الحفظ: {e}")
+
+# جلب البيانات وعرضها
+try:
+  response = supabase.table(TABLE_NAME).select("*").execute()
+  data = response.data
+
+  if data:
+    df = pd.DataFrame(data)
+
+    st.subheader("📊 سجل المعاملات")
+
+    # حساب الإجماليات
+    total_income = df[df["type"] == "مدخول"]["amount"].sum()
+    total_expense = df[df["type"] == "مصروف"]["amount"].sum()
+    net_balance = total_income - total_expense
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("إجمالي المداخيل", f"{total_income:,.2f}")
+    col2.metric("إجمالي المصاريف", f"{total_expense:,.2f}")
+    col3.metric("الصافي الحالي", f"{net_balance:,.2f}")
 
     st.markdown("---")
-    
-    # عرض جدول عمليات الشهر المختار فقط
-    st.subheader(f"📋 عمليات وسجلات شهر ({selected_month}) المستقلة")
-    display_df = filtered_df.drop(columns=['التاريخ_تاريخ', 'الشهر_والسنة'])
-    st.dataframe(display_df, use_container_width=True)
 
-else:
-    st.info("لا توجد عمليات مسجلة حالياً لبدء الفلترة الشهرية. يمكنك البدء بإضافة أول عملية أدناه.")
+    # عرض الجدول
+    st.dataframe(df, use_container_width=True)
 
-st.markdown("---")
+    # زر لحذف معاملة عبر الـ ID
+    st.markdown("### 🗑️ حذف معاملة")
+    delete_id = st.number_input(
+        "أدخل معرف (ID) المعاملة المراد حذفها", min_value=1, step=1
+    )
+    if st.button("حذف المعاملة"):
+      try:
+        supabase.table(TABLE_NAME).delete().eq("id", delete_id).execute()
+        st.success(f"تم حذف المعاملة رقم {delete_id} بنجاح!")
+        st.rerun()
+      except Exception as e:
+        st.error(f"خطأ في الحذف: {e}")
 
-# 3. نموذج إدخال عملية جديدة في الأسفل
-st.subheader("📝 تسجيل عملية جديدة (راتب / مصروف)")
-with st.form("add_transaction_form", clear_on_submit=True):
-    col_a, col_b = st.columns(2)
-    
-    with col_a:
-        date_val = st.date_input("التاريخ (سيتم توجيه العملية لشهرها تلقائياً)", datetime.date.today())
-        desc_val = st.text_input("البيان / الوصف (مثال: راتب، صيانة سيارة)")
-        amount_val = st.number_input("المبلغ ($)", min_value=0.0, step=1.0, format="%.2f")
-        
-    with col_b:
-        type_val = st.selectbox("النوع", ["المدخول", "المصروف"])
-        category_val = st.selectbox("الفئة", ["راتب وعمل", "منزل", "سيارة", "طاقة شمسية", "أخرى"])
-        notes_val = st.text_area("ملاحظات إضافية")
-        
-    submit_button = st.form_submit_button("حفظ العملية في السحابة")
+  else:
+    st.info("ℹ️ لا توجد معاملات مسجلة حتى الآن. ابدأ بإضافة معاملة جديدة من القائمة الجانبية.")
 
-if submit_button:
-    if desc_val.strip() == "" or amount_val <= 0.0:
-        st.warning("الرجاء تعبئة حقل البيان وإدخال قيمة صحيحة للمبلغ لإتمام الحفظ.")
-    else:
-        with st.spinner("جاري حفظ العملية في السحابة..."):
-            success = add_record(date_val, desc_val, type_val, category_val, amount_val, notes_val)
-            if success:
-                st.success("تم تسجيل وحفظ العملية بنجاح!")
-                st.rerun()
-            else:
-                st.error("حدث خطأ أثناء محاولة حفظ البيانات، يرجى مراجعة إعدادات الـ Secrets.")
+except Exception as e:
+    st.error(f"❌ تعذر جلب البيانات من قاعدة البيانات: {e}")
