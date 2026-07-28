@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import streamlit as st
 
-# إعداد الصفحة بعرض كامل لتناسب التصميم العلوي
+# إعداد الصفحة
 st.set_page_config(
     page_title="الصندوق الشخصي", page_icon="💰", layout="wide"
 )
@@ -67,22 +67,40 @@ df = load_data()
 st.title("💰 إدارة الصندوق الشخصي")
 st.markdown("---")
 
-# --- 1. القائمة الرئيسية في الأعلى (نموذج الإدخال) ---
+# --- 1. الصندوق والإجماليات في الأعلى ---
+st.subheader("📊 حالة الصندوق والإجماليات")
+
+if not df.empty:
+  total_income = df[df["type"] == "مدخول"]["amount_usd"].sum()
+  total_expense = df[df["type"] == "مصروف"]["amount_usd"].sum()
+  net_balance = total_income - total_expense
+else:
+  total_income = 0.0
+  total_expense = 0.0
+  net_balance = 0.0
+
+col1, col2, col3 = st.columns(3)
+col1.metric("إجمالي المداخيل ($)", f"${total_income:,.2f}")
+col2.metric("إجمالي المصاريف ($)", f"${total_expense:,.2f}")
+col3.metric("الصافي الحالي ($)", f"${net_balance:,.2f}")
+
+st.markdown("---")
+
+# --- 2. تنظيم المعاملات وإضافتها ---
 st.subheader("➕ إضافة معاملة جديدة")
 
 with st.form("transaction_form", clear_on_submit=True):
-  # نضع المدخلات مقسمة على أعمدة في الأعلى لترتيب أنيق
-  col_a1, col_a2, col_a3, col_a4 = st.columns(4)
+  c1, c2, c3, c4 = st.columns(4)
 
-  with col_a1:
+  with c1:
     t_date = st.date_input("التاريخ", value=datetime.today())
     t_type = st.selectbox("النوع", ["مدخول", "مصروف"])
 
-  with col_a2:
+  with c2:
     currency = st.selectbox("عملة الدفع", ["دولار ($)", "ليرة لبنانية (ل.ل)"])
     t_amount = st.number_input("المبلغ المدفوع", min_value=0.0, step=1.0)
 
-  with col_a3:
+  with c3:
     exchange_rate = st.number_input(
         "سعر الصرف (ليرة/$)", min_value=1.0, value=89500.0, step=100.0
     )
@@ -99,11 +117,11 @@ with st.form("transaction_form", clear_on_submit=True):
         ],
     )
 
-  with col_a4:
+  with c4:
     t_description = st.text_input("البيان / الوصف")
     t_notes = st.text_input("ملاحظات")
 
-  submit_button = st.form_submit_button(label="حفظ المعاملة في الصندوق")
+  submit_button = st.form_submit_button(label="حفظ المعاملة")
 
   if submit_button:
     if "ليرة" in currency:
@@ -123,34 +141,19 @@ with st.form("transaction_form", clear_on_submit=True):
     }
     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     save_data(df)
-    st.success(f"✅ تم الحفظ بنجاح! (المبالغ محسوبة بالدولار: ${amount_usd:,.2f})")
+    st.success(f"✅ تم الحفظ! (المبلغ بالدولار: ${amount_usd:,.2f})")
     st.rerun()
 
 st.markdown("---")
 
-# --- 2. قسم المعلومات والإجماليات والجدول في الأسفل ---
-st.subheader("📊 سجل المعاملات والمعلومات العامة")
+# --- 3. سجل المعاملات وتحتها التنظيم (الجدول والحذف) ---
+st.subheader("📋 جدول تنظيم المعاملات")
 
 if not df.empty:
-  # حساب الإجماليات
-  total_income = df[df["type"] == "مدخول"]["amount_usd"].sum()
-  total_expense = df[df["type"] == "مصروف"]["amount_usd"].sum()
-  net_balance = total_income - total_expense
-
-  # عرض الإجماليات في كروت واضحة بالأسفل
-  m_col1, m_col2, m_col3 = st.columns(3)
-  m_col1.metric("إجمالي المداخيل ($)", f"${total_income:,.2f}")
-  m_col2.metric("إجمالي المصاريف ($)", f"${total_expense:,.2f}")
-  m_col3.metric("الصافي الحالي ($)", f"${net_balance:,.2f}")
-
-  st.markdown("")
-
-  # عرض جدول البيانات
   display_df = df.reset_index().rename(columns={"index": "ID"})
   display_df["ID"] = display_df["ID"] + 1
   st.dataframe(display_df, use_container_width=True)
 
-  # قسم الحذف
   st.markdown("### 🗑️ حذف معاملة")
   d_col1, d_col2 = st.columns([2, 1])
   with d_col1:
@@ -161,16 +164,12 @@ if not df.empty:
         step=1,
     )
   with d_col2:
-    st.write("")  # مسافة محاذاة
     st.write("")
-    if st.button("حذف المعاملة المحددة"):
+    st.write("")
+    if st.button("حذف المعاملة"):
       df = df.drop(index=delete_id - 1).reset_index(drop=True)
       save_data(df)
       st.success(f"تم حذف المعاملة رقم {delete_id} بنجاح!")
       st.rerun()
-
 else:
-  st.info(
-      "ℹ️ لا توجد معاملات مسجلة حتى الآن. استخدم نموذج الإدخال في الأعلى لإضافة"
-      " أول معاملة."
-  )
+  st.info("ℹ️ لا توجد معاملات مسجلة حتى الآن.")
