@@ -39,9 +39,10 @@ except Exception:
 ENCODED_TABLE_NAME = urllib.parse.quote(AIRTABLE_TABLE_NAME)
 AIRTABLE_URL = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{ENCODED_TABLE_NAME}"
 
+# التعديل النهائي لضمان نجاح الاتصال وتجنب خطأ 401
 HEADERS = {
-    "Authorization": f"Bearer {AIRTABLE_API_KEY}".encode('utf-8').decode('latin-1'),
-    "Content-Type": "application/json; charset=utf-8"
+    "Authorization": f"Bearer {AIRTABLE_API_KEY}",
+    "Content-Type": "application/json"
 }
 
 # دالة جلب البيانات
