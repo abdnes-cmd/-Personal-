@@ -1,31 +1,31 @@
 from datetime import datetime
+import os
 import pandas as pd
-from supabase import create_client
 import streamlit as st
 
 # إعداد الصفحة
 st.set_page_config(page_title="الصندوق الشخصي", page_icon="💰", layout="centered")
 
-# جلب الإعدادات من Secrets
-try:
-  SUPABASE_URL = st.secrets["SUPABASE_URL"]
-  SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-  TABLE_NAME = st.secrets["table_name"]
-except Exception as e:
-  st.error(
-      "⚠️ يرجى التأكد من إضافة إعدادات الـ Secrets بشكل صحيح في لوحة تحكم"
-      " Streamlit."
-  )
-  st.stop()
+# ملف تخزين البيانات محلياً لتجنب مشاكل الاتصال
+DATA_FILE = "personal_box_data.csv"
 
 
-# الاتصال بـ Supabase
-@st.cache_resource
-def init_connection():
-  return create_client(SUPABASE_URL, SUPABASE_KEY)
+def load_data():
+  if os.path.exists(DATA_FILE):
+    return pd.read_csv(DATA_FILE)
+  else:
+    # إنشاء جدول فارغ بالعمود المطلوبة إذا لم يكن موجوداً
+    return pd.DataFrame(
+        columns=["date", "type", "amount", "category", "description", "notes"]
+    )
 
 
-supabase = init_connection()
+def save_data(df):
+  df.to_csv(DATA_FILE, index=False)
+
+
+# تحميل البيانات
+df = load_data()
 
 # عنوان التطبيق
 st.title("💰 إدارة الصندوق الشخصي")
@@ -56,61 +56,54 @@ with st.sidebar.form("transaction_form", clear_on_submit=True):
   submit_button = st.form_submit_button(label="حفظ المعاملة")
 
   if submit_button:
-    try:
-      data = {
-          "date": str(t_date),
-          "type": t_type,
-          "amount": float(t_amount),
-          "category": t_category,
-          "description": t_description,
-          "notes": t_notes,
-      }
-      response = supabase.table(TABLE_NAME).insert(data).execute()
-      st.sidebar.success("✅ تم حفظ المعاملة بنجاح!")
-      st.rerun()
-    except Exception as e:
-      st.sidebar.error(f"❌ حدث خطأ أثناء الحفظ: {e}")
+    new_row = {
+        "date": str(t_date),
+        "type": t_type,
+        "amount": float(t_amount),
+        "category": t_category,
+        "description": t_description,
+        "notes": t_notes,
+    }
+    # إضافة الصف الجديد للجدول
+    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    save_data(df)
+    st.sidebar.success("✅ تم حفظ المعاملة بنجاح!")
+    st.rerun()
 
-# جلب البيانات وعرضها
-try:
-  response = supabase.table(TABLE_NAME).select("*").execute()
-  data = response.data
+# عرض البيانات والإجماليات
+st.subheader("📊 سجل المعاملات")
 
-  if data:
-    df = pd.DataFrame(data)
+if not df.empty:
+  # حساب الإجماليات
+  total_income = df[df["type"] == "مدخول"]["amount"].sum()
+  total_expense = df[df["type"] == "مصروف"]["amount"].sum()
+  net_balance = total_income - total_expense
 
-    st.subheader("📊 سجل المعاملات")
+  col1, col2, col3 = st.columns(3)
+  col1.metric("إجمالي المداخيل", f"{total_income:,.2f}")
+  col2.metric("إجمالي المصاريف", f"{total_expense:,.2f}")
+  col3.metric("الصافي الحالي", f"{net_balance:,.2f}")
 
-    # حساب الإجماليات
-    total_income = df[df["type"] == "مدخول"]["amount"].sum()
-    total_expense = df[df["type"] == "مصروف"]["amount"].sum()
-    net_balance = total_income - total_expense
+  st.markdown("---")
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("إجمالي المداخيل", f"{total_income:,.2f}")
-    col2.metric("إجمالي المصاريف", f"{total_expense:,.2f}")
-    col3.metric("الصافي الحالي", f"{net_balance:,.2f}")
+  # عرض الجدول مع إضافة عمود الترقيم التلقائي (الرقم التسلسلي)
+  display_df = df.reset_index().rename(columns={"index": "ID"})
+  display_df["ID"] = display_df["ID"] + 1
+  st.dataframe(display_df, use_container_width=True)
 
-    st.markdown("---")
+  # زر لحذف معاملة عبر الـ ID
+  st.markdown("### 🗑️ حذف معاملة")
+  delete_id = st.number_input(
+      "أدخل رقم (ID) المعاملة المراد حذفها",
+      min_value=1,
+      max_value=len(df),
+      step=1,
+  )
+  if st.button("حذف المعاملة"):
+    df = df.drop(index=delete_id - 1).reset_index(drop=True)
+    save_data(df)
+    st.success(f"تم حذف المعاملة رقم {delete_id} بنجاح!")
+    st.rerun()
 
-    # عرض الجدول
-    st.dataframe(df, use_container_width=True)
-
-    # زر لحذف معاملة عبر الـ ID
-    st.markdown("### 🗑️ حذف معاملة")
-    delete_id = st.number_input(
-        "أدخل معرف (ID) المعاملة المراد حذفها", min_value=1, step=1
-    )
-    if st.button("حذف المعاملة"):
-      try:
-        supabase.table(TABLE_NAME).delete().eq("id", delete_id).execute()
-        st.success(f"تم حذف المعاملة رقم {delete_id} بنجاح!")
-        st.rerun()
-      except Exception as e:
-        st.error(f"خطأ في الحذف: {e}")
-
-  else:
-    st.info("ℹ️ لا توجد معاملات مسجلة حتى الآن. ابدأ بإضافة معاملة جديدة من القائمة الجانبية.")
-
-except Exception as e:
-    st.error(f"❌ تعذر جلب البيانات من قاعدة البيانات: {e}")
+else:
+  st.info("ℹ️ لا توجد معاملات مسجلة حتى الآن. ابدأ بإضافة معاملة جديدة من القائمة الجانبية.")
