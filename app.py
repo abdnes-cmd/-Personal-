@@ -1,6 +1,6 @@
 from datetime import datetime
+import os
 import pandas as pd
-from supabase import create_client
 import streamlit as st
 
 # إعداد الصفحة
@@ -8,44 +8,69 @@ st.set_page_config(
     page_title="الصندوق الشخصي", page_icon="💰", layout="wide"
 )
 
-# جلب الإعدادات السرية من Streamlit Secrets
-try:
-  SUPABASE_URL = st.secrets["SUPABASE_URL"]
-  SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-  TABLE_NAME = st.secrets["table_name"]
-except Exception as e:
-  st.error(
-      "⚠️ يرجى التأكد من إضافة إعدادات الـ Secrets بشكل صحيح في لوحة تحكم"
-      " Streamlit."
-  )
-  st.stop()
+DATA_FILE = "personal_box_data.csv"
 
 
-# الاتصال السحابي بـ Supabase
-@st.cache_resource
-def init_connection():
-  return create_client(SUPABASE_URL, SUPABASE_KEY)
+def load_data():
+  if os.path.exists(DATA_FILE):
+    try:
+      df = pd.read_csv(DATA_FILE)
+      required_columns = [
+          "date",
+          "type",
+          "amount_usd",
+          "original_amount",
+          "currency",
+          "category",
+          "description",
+          "notes",
+      ]
+      for col in required_columns:
+        if col not in df.columns:
+          return pd.DataFrame(columns=required_columns)
+      return df
+    except:
+      return pd.DataFrame(
+          columns=[
+              "date",
+              "type",
+              "amount_usd",
+              "original_amount",
+              "currency",
+              "category",
+              "description",
+              "notes",
+          ]
+      )
+  else:
+    return pd.DataFrame(
+        columns=[
+            "date",
+            "type",
+            "amount_usd",
+            "original_amount",
+            "currency",
+            "category",
+            "description",
+            "notes",
+        ]
+    )
 
 
-supabase = init_connection()
+def save_data(df):
+  df.to_csv(DATA_FILE, index=False)
+
+
+df = load_data()
 
 # عنوان التطبيق
-st.title("💰 إدارة الصندوق الشخصي (سحابي 100%)")
+st.title("💰 إدارة الصندوق الشخصي")
 st.markdown("---")
-
-# جلب البيانات الحية من السحابة
-try:
-  response = supabase.table(TABLE_NAME).select("*").execute()
-  data = response.data
-  df = pd.DataFrame(data) if data else pd.DataFrame()
-except Exception as e:
-  st.error(f"❌ تعذر الاتصال بقاعدة البيانات السحابية: {e}")
-  df = pd.DataFrame()
 
 # --- 1. حالة الصندوق والإجماليات في الأعلى ---
 st.subheader("📊 حالة الصندوق والإجماليات")
 
-if not df.empty and "amount_usd" in df.columns:
+if not df.empty:
   total_income = df[df["type"] == "مدخول"]["amount_usd"].sum()
   total_expense = df[df["type"] == "مصروف"]["amount_usd"].sum()
   net_balance = total_income - total_expense
@@ -62,7 +87,7 @@ col3.metric("الصافي الحالي ($)", f"${net_balance:,.2f}")
 st.markdown("---")
 
 # --- 2. إضافة معاملة جديدة ---
-st.subheader("➕ إضافة معاملة جديدة للسحابة")
+st.subheader("➕ إضافة معاملة جديدة")
 
 with st.form("transaction_form", clear_on_submit=True):
   c1, c2, c3, c4 = st.columns(4)
@@ -96,7 +121,7 @@ with st.form("transaction_form", clear_on_submit=True):
     t_description = st.text_input("البيان / الوصف")
     t_notes = st.text_input("ملاحظات")
 
-  submit_button = st.form_submit_button(label="حفظ المعاملة بالسحابة")
+  submit_button = st.form_submit_button(label="حفظ المعاملة")
 
   if submit_button:
     if "ليرة" in currency:
@@ -107,46 +132,44 @@ with st.form("transaction_form", clear_on_submit=True):
     new_row = {
         "date": str(t_date),
         "type": t_type,
-        "amount_usd": round(float(amount_usd), 2),
-        "original_amount": float(t_amount),
+        "amount_usd": round(amount_usd, 2),
+        "original_amount": t_amount,
         "currency": currency,
         "category": t_category,
         "description": t_description,
         "notes": t_notes,
     }
-
-    try:
-      supabase.table(TABLE_NAME).insert(new_row).execute()
-      st.success(
-          f"✅ تم الحفظ في السحابة بنجاح! (المبلغ بالدولار: ${amount_usd:,.2f})"
-      )
-      st.rerun()
-    except Exception as e:
-      st.error(f"❌ خطأ أثناء الحفظ في قاعدة البيانات: {e}")
+    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+    save_data(df)
+    st.success(f"✅ تم الحفظ! (المبلغ بالدولار: ${amount_usd:,.2f})")
+    st.rerun()
 
 st.markdown("---")
 
 # --- 3. سجل المعاملات وخيارات الحذف ---
-st.subheader("📋 جدول تنظيم المعاملات السحابية")
+st.subheader("📋 جدول تنظيم المعاملات")
 
 if not df.empty:
-  st.dataframe(df, use_container_width=True)
+  display_df = df.reset_index().rename(columns={"index": "ID"})
+  display_df["ID"] = display_df["ID"] + 1
+  st.dataframe(display_df, use_container_width=True)
 
   st.markdown("### 🗑️ حذف معاملة")
   d_col1, d_col2 = st.columns([2, 1])
   with d_col1:
     delete_id = st.number_input(
-        "أدخل معرف (ID) المعاملة المراد حذفها", min_value=1, step=1
+        "أدخل رقم (ID) المعاملة المراد حذفها",
+        min_value=1,
+        max_value=len(df),
+        step=1,
     )
   with d_col2:
     st.write("")
     st.write("")
-    if st.button("حذف المعاملة من السحابة"):
-      try:
-        supabase.table(TABLE_NAME).delete().eq("id", delete_id).execute()
-        st.success(f"تم حذف المعاملة رقم {delete_id} بنجاح من السحابة!")
-        st.rerun()
-      except Exception as e:
-        st.error(f"خطأ في الحذف: {e}")
+    if st.button("حذف المعاملة"):
+      df = df.drop(index=delete_id - 1).reset_index(drop=True)
+      save_data(df)
+      st.success(f"تم حذف المعاملة رقم {delete_id} بنجاح!")
+      st.rerun()
 else:
-  st.info("ℹ️ لا توجد معاملات مسجلة في السحابة حتى الآن.")
+  st.info("ℹ️ لا توجد معاملات مسجلة حتى الآن.")
