@@ -107,7 +107,7 @@ with st.form("transaction_form", clear_on_submit=True):
 
   with c3:
     exchange_rate = st.number_input(
-        "سعر الصرف (ليرة/$)", min_value=1.0, value=89500.0, step0=100.0
+        "سعر الصرف (ليرة/$)", min_value=1.0, value=89500.0, step=100.0
     )
     t_category = st.selectbox(
         "الفئة",
