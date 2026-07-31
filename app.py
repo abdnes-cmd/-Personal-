@@ -28,8 +28,8 @@ df = load_data()
 st.title("💰 إدارة الصندوق الشخصي")
 st.markdown("---")
 
-# --- شريط النسخ الاحتياطي (تحميل ورفع الملفات) ---
-with st.expander("⚙️ إدارة البيانات والنسخ الاحتياطي (تحميل ورفع)"):
+# --- شريط إدارة البيانات، النسخ الاحتياطي، والتصفير ---
+with st.expander("⚙️ إدارة البيانات والنسخ الاحتياطي والتصفير"):
   col_up, col_down = st.columns(2)
 
   with col_up:
@@ -64,6 +64,22 @@ with st.expander("⚙️ إدارة البيانات والنسخ الاحتيا
         st.rerun()
       except Exception as e:
         st.error(f"خطأ في قراءة الملف: {e}")
+
+  st.markdown("---")
+  # --- زر التصفير الشامل ---
+  st.subheader("⚠️ منطقة الخطر (تصفير البيانات)")
+  st.write("حذف جميع المعاملات وتصفير الصندوق بالكامل:")
+  confirm_reset = st.checkbox("أنا متأكد من رغبتي في حذف جميع البيانات")
+  if st.button("🗑️ تصفير كل البيانات نهائياً", type="primary"):
+    if confirm_reset:
+      if os.path.exists(DATA_FILE):
+        os.remove(DATA_FILE)
+      st.success("🧹 تم تصفير وحذف جميع البيانات بنجاح!")
+      st.rerun()
+    else:
+      st.error(
+          "⚠️ يجب تحديد مربع التأكيد (أنا متأكد...) قبل الضغط على زر التصفير."
+      )
 
 st.markdown("---")
 
@@ -159,7 +175,7 @@ if not df.empty:
   display_df["ID"] = display_df["ID"] + 1
   st.dataframe(display_df, use_container_width=True)
 
-  st.markdown("### 🗑️ حذف معاملة")
+  st.markdown("### 🗑️ حذف معاملة مفردة")
   d_col1, d_col2 = st.columns([2, 1])
   with d_col1:
     delete_id = st.number_input(
