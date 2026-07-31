@@ -28,26 +28,33 @@ df = load_data()
 st.title("💼 إدارة الصندوق الشخصي (النسخة المطورة)")
 st.markdown("---")
 
-# --- استعادة الملفات (يدعم CSV أو تحويل Excel مباشر) ---
-st.info("💡 استعد بياناتك القديمة برفع ملف الـ CSV الخاص بك هنا:")
+# --- استعادة البيانات (يدعم ملفات Excel و CSV معاً) ---
+st.info("💡 استعد بياناتك القديمة برفع ملف الإكسيل أو الـ CSV الخاص بك هنا:")
 uploaded_file = st.file_uploader(
-    "اختر ملف البيانات (يُفضل حفظه بصيغة CSV لضمان القراءة الفورية)",
-    type=["csv"],
+    "اختر ملف البيانات (.xlsx أو .csv)", type=["xlsx", "csv"]
 )
 
 if uploaded_file is not None:
   try:
-    imported_df = pd.read_csv(uploaded_file)
+    # قراءة الملف بناءً على نوعه تلقائياً
+    if uploaded_file.name.endswith(".csv"):
+      imported_df = pd.read_csv(uploaded_file)
+    else:
+      imported_df = pd.read_excel(uploaded_file)
+
     st.write("📋 معاينة البيانات المستوردة من ملفك:")
     st.dataframe(imported_df.head(3))
 
     if not imported_df.empty:
-      # توحيد الأعمدة تلقائياً لضمان توافقها مع النظام
-      # إذا وجد عمود للمبلغ بالدولار أو غيره يقوم باعتماده
+      # تجهيز الأعمدة ل تتوافق مع التطبيق
       if "amount_usd" not in imported_df.columns:
         if "المبلغ" in imported_df.columns:
           imported_df["amount_usd"] = pd.to_numeric(
               imported_df["المبلغ"], errors="coerce"
+          ).fillna(0)
+        elif "original_amount" in imported_df.columns:
+          imported_df["amount_usd"] = pd.to_numeric(
+              imported_df["original_amount"], errors="coerce"
           ).fillna(0)
         else:
           imported_df["amount_usd"] = 0.0
@@ -61,13 +68,16 @@ if uploaded_file is not None:
       if "date" not in imported_df.columns:
         imported_df["date"] = str(datetime.today().date())
 
-      # دمج البيانات
+      # دمج البيانات وحفظها
       df = pd.concat([df, imported_df], ignore_index=True)
       save_data(df)
       st.success("🎉 تمت استعادة ودمج البيانات بنجاح تام!")
       st.rerun()
   except Exception as ex:
-    st.error(f"خطأ في قراءة الملف: {ex}")
+    st.error(
+        f"خطأ في قراءة الملف: تأكد من أن الملف سليم ولا يحتوي على أخطاء. التفاصيل:"
+        f" {ex}"
+    )
 
 st.markdown("---")
 
