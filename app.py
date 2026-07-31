@@ -28,27 +28,43 @@ df = load_data()
 st.title("💼 إدارة الصندوق الشخصي (النسخة المطورة)")
 st.markdown("---")
 
-# --- زر رفع واستعادة الملفات البارز ---
-st.info(
-    "💡 استعد بياناتك القديمة فوراً برفع ملف الـ CSV أو Excel الخاص بك هنا:"
-)
+# --- استعادة الملفات (يدعم CSV أو تحويل Excel مباشر) ---
+st.info("💡 استعد بياناتك القديمة برفع ملف الـ CSV الخاص بك هنا:")
 uploaded_file = st.file_uploader(
-    "اختر الملف (CSV أو Excel)", type=["csv", "xlsx"]
+    "اختر ملف البيانات (يُفضل حفظه بصيغة CSV لضمان القراءة الفورية)",
+    type=["csv"],
 )
 
 if uploaded_file is not None:
   try:
-    if uploaded_file.name.endswith(".csv"):
-      imported_df = pd.read_csv(uploaded_file)
-    else:
-      imported_df = pd.read_excel(uploaded_file)
+    imported_df = pd.read_csv(uploaded_file)
+    st.write("📋 معاينة البيانات المستوردة من ملفك:")
+    st.dataframe(imported_df.head(3))
 
     if not imported_df.empty:
+      # توحيد الأعمدة تلقائياً لضمان توافقها مع النظام
+      # إذا وجد عمود للمبلغ بالدولار أو غيره يقوم باعتماده
+      if "amount_usd" not in imported_df.columns:
+        if "المبلغ" in imported_df.columns:
+          imported_df["amount_usd"] = pd.to_numeric(
+              imported_df["المبلغ"], errors="coerce"
+          ).fillna(0)
+        else:
+          imported_df["amount_usd"] = 0.0
+
+      if "type" not in imported_df.columns:
+        if "النوع" in imported_df.columns:
+          imported_df["type"] = imported_df["النوع"]
+        else:
+          imported_df["type"] = "مدخول"
+
+      if "date" not in imported_df.columns:
+        imported_df["date"] = str(datetime.today().date())
+
+      # دمج البيانات
       df = pd.concat([df, imported_df], ignore_index=True)
       save_data(df)
-      st.success(
-          "🎉 تمت استعادة ودمج البيانات بنجاح تام! جاري تحديث الصفحة..."
-      )
+      st.success("🎉 تمت استعادة ودمج البيانات بنجاح تام!")
       st.rerun()
   except Exception as ex:
     st.error(f"خطأ في قراءة الملف: {ex}")
@@ -59,8 +75,12 @@ st.markdown("---")
 st.subheader("📊 الملخص المالي")
 if not df.empty and "amount_usd" in df.columns:
   df["amount_usd"] = pd.to_numeric(df["amount_usd"], errors="coerce").fillna(0)
-  inc = df[df["type"] == "مدخول"]["amount_usd"].sum()
-  exp = df[df["type"] == "مصروف"]["amount_usd"].sum()
+  inc = df[df["type"].astype(str).str.contains("مدخول", na=False)][
+      "amount_usd"
+  ].sum()
+  exp = df[df["type"].astype(str).str.contains("مصروف", na=False)][
+      "amount_usd"
+  ].sum()
   net = inc - exp
 else:
   inc, exp, net = 0.0, 0.0, 0.0
