@@ -13,7 +13,11 @@ DATA_FILE = "personal_box_data.csv"
 def load_data():
   if os.path.exists(DATA_FILE):
     try:
-      return pd.read_csv(DATA_FILE)
+      df = pd.read_csv(DATA_FILE)
+      # إصلاح تلقائي لوجود أرقام خاطئة سابقة في amount_usd
+      if "amount_usd" in df.columns:
+        df["amount_usd"] = pd.to_numeric(df["amount_usd"], errors="coerce").fillna(0)
+      return df
     except:
       return pd.DataFrame()
   return pd.DataFrame()
@@ -34,7 +38,6 @@ with st.expander("⚙️ إدارة البيانات والنسخ الاحتيا
 
   with col_up:
     st.subheader("📤 تحميل نسخة احتياطية")
-    st.write("احفظ نسخة من بياناتك الحالية على هاتفك:")
     if not df.empty:
       csv_data = df.to_csv(index=False).encode("utf-8")
       st.download_button(
@@ -49,7 +52,7 @@ with st.expander("⚙️ إدارة البيانات والنسخ الاحتيا
   with col_down:
     st.subheader("📥 استعادة البيانات")
     uploaded_file = st.file_uploader(
-        "ارفع ملفك السابق لاستعادة البيانات:", type=["csv", "xlsx"]
+        "ارفع ملفك السابق:", type=["csv", "xlsx"]
     )
     if uploaded_file is not None:
       try:
@@ -57,29 +60,24 @@ with st.expander("⚙️ إدارة البيانات والنسخ الاحتيا
           imported_df = pd.read_csv(uploaded_file)
         else:
           imported_df = pd.read_excel(uploaded_file)
-
         df = pd.concat([df, imported_df], ignore_index=True).drop_duplicates()
         save_data(df)
-        st.success("✅ تمت استعادة البيانات ودمجها بنجاح!")
+        st.success("✅ تمت الاستعادة بنجاح!")
         st.rerun()
       except Exception as e:
-        st.error(f"خطأ في قراءة الملف: {e}")
+        st.error(f"خطأ: {e}")
 
   st.markdown("---")
-  # --- زر التصفير الشامل ---
-  st.subheader("⚠️ منطقة الخطر (تصفير البيانات)")
-  st.write("حذف جميع المعاملات وتصفير الصندوق بالكامل:")
+  st.subheader("⚠️ تصفير البيانات")
   confirm_reset = st.checkbox("أنا متأكد من رغبتي في حذف جميع البيانات")
   if st.button("🗑️ تصفير كل البيانات نهائياً", type="primary"):
     if confirm_reset:
       if os.path.exists(DATA_FILE):
         os.remove(DATA_FILE)
-      st.success("🧹 تم تصفير وحذف جميع البيانات بنجاح!")
+      st.success("🧹 تم التصفير بنجاح!")
       st.rerun()
     else:
-      st.error(
-          "⚠️ يجب تحديد مربع التأكيد (أنا متأكد...) قبل الضغط على زر التصفير."
-      )
+      st.error("⚠️ يجب تحديد مربع التأكيد أولاً.")
 
 st.markdown("---")
 
@@ -145,6 +143,7 @@ with st.form("transaction_form", clear_on_submit=True):
   submit_button = st.form_submit_button(label="حفظ المعاملة")
 
   if submit_button:
+    # المعادلة الدقيقة للتحويل
     if "ليرة" in currency:
       amount_usd = t_amount / exchange_rate if exchange_rate > 0 else 0
     else:
@@ -175,11 +174,11 @@ if not df.empty:
   display_df["ID"] = display_df["ID"] + 1
   st.dataframe(display_df, use_container_width=True)
 
-  st.markdown("### 🗑️ حذف معاملة مفردة")
+  st.markdown("### 🗑️ حذف معاملة مفردة أو تعديل الخطأ")
   d_col1, d_col2 = st.columns([2, 1])
   with d_col1:
     delete_id = st.number_input(
-        "أدخل رقم (ID) المعاملة المراد حذفها",
+        "أدخل رقم (ID) المعاملة الخاطئة للحذف",
         min_value=1,
         max_value=len(df),
         step=1,
