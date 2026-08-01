@@ -14,9 +14,10 @@ def load_data():
   if os.path.exists(DATA_FILE):
     try:
       df = pd.read_csv(DATA_FILE)
-      # إصلاح تلقائي لوجود أرقام خاطئة سابقة في amount_usd
       if "amount_usd" in df.columns:
-        df["amount_usd"] = pd.to_numeric(df["amount_usd"], errors="coerce").fillna(0)
+        df["amount_usd"] = pd.to_numeric(
+            df["amount_usd"], errors="coerce"
+        ).fillna(0)
       return df
     except:
       return pd.DataFrame()
@@ -113,11 +114,15 @@ with st.form("transaction_form", clear_on_submit=True):
 
   with c1:
     t_date = st.date_input("التاريخ", value=datetime.today())
-    t_type = st.selectbox("النوع", ["مدخول", "مصروف"])
+    # جعل "مصروف" هو الخيار الافتراضي الأول
+    t_type = st.selectbox("النوع", ["مصروف", "مدخول"])
 
   with c2:
     currency = st.selectbox("عملة الدفع", ["دولار ($)", "ليرة لبنانية (ل.ل)"])
-    t_amount = st.number_input("المبلغ المدفوع", min_value=0.0, step=1.0)
+    # جعل قيمة المبلغ فارغة لتجنب الاضطرار لمسح الأصفار
+    t_amount = st.number_input(
+        "المبلغ المدفوع", min_value=0.0, value=None, step=1.0, placeholder="أدخل المبلغ..."
+    )
 
   with c3:
     exchange_rate = st.number_input(
@@ -126,12 +131,12 @@ with st.form("transaction_form", clear_on_submit=True):
     t_category = st.selectbox(
         "الفئة",
         [
-            "راتب",
-            "تجارة",
             "أكل وشرب",
             "فواتير",
             "مواصلات",
             "ترفيه",
+            "راتب",
+            "تجارة",
             "متفرقات",
         ],
     )
@@ -143,7 +148,9 @@ with st.form("transaction_form", clear_on_submit=True):
   submit_button = st.form_submit_button(label="حفظ المعاملة")
 
   if submit_button:
-    # المعادلة الدقيقة للتحويل
+    if t_amount is None:
+      t_amount = 0.0
+
     if "ليرة" in currency:
       amount_usd = t_amount / exchange_rate if exchange_rate > 0 else 0
     else:
@@ -174,11 +181,11 @@ if not df.empty:
   display_df["ID"] = display_df["ID"] + 1
   st.dataframe(display_df, use_container_width=True)
 
-  st.markdown("### 🗑️ حذف معاملة مفردة أو تعديل الخطأ")
+  st.markdown("### 🗑️ حذف معاملة مفردة")
   d_col1, d_col2 = st.columns([2, 1])
   with d_col1:
     delete_id = st.number_input(
-        "أدخل رقم (ID) المعاملة الخاطئة للحذف",
+        "أدخل رقم (ID) المعاملة المراد حذفها",
         min_value=1,
         max_value=len(df),
         step=1,
